@@ -149,6 +149,15 @@ export function BoardTable({ data, columnVisibility, onColumnVisibilityChange, s
     },
   });
 
+  const visibleLeafColumns = table.getVisibleLeafColumns();
+  const stickySectionColumns = visibleLeafColumns.filter((column) => STICKY_LEFT[column.id] !== undefined);
+  const stickySectionColSpan = stickySectionColumns.length;
+  const trailingSectionColSpan = visibleLeafColumns.length - stickySectionColSpan;
+  const stickySectionWidth = stickySectionColumns.reduce(
+    (sum, column) => sum + (STICKY_WIDTHS[column.id] ?? column.getSize()),
+    0,
+  );
+
   return (
     <>
       <table className="w-full text-sm">
@@ -243,7 +252,7 @@ export function BoardTable({ data, columnVisibility, onColumnVisibilityChange, s
             const isArchived = row.original.vehicle.user.archived;
             const isPinned = row.original.vehicle.user.pinned;
             const rows = orderedRows;
-            const colCount = table.getVisibleLeafColumns().length;
+            const colCount = visibleLeafColumns.length;
 
             const isFirstCurrentCar = isCurrentCar && (index === 0 || !rows[index - 1].original.vehicle.user.isCurrentCar);
             const isLastCurrentCar = isCurrentCar && (index === rows.length - 1 || !rows[index + 1].original.vehicle.user.isCurrentCar);
@@ -253,26 +262,66 @@ export function BoardTable({ data, columnVisibility, onColumnVisibilityChange, s
               <Fragment key={row.id}>
                 {isFirstCurrentCar && (
                   <tr>
-                    <td colSpan={colCount} className="pt-1 pb-1 px-4 bg-emerald-50/30">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">My Car</span>
-                        {onToggleSellScenario && (
-                          <button
-                            onClick={onToggleSellScenario}
-                            className="text-[11px] text-slate-400 hover:text-slate-600 cursor-pointer"
-                          >
-                            {showSellScenario ? 'Hide' : 'Show'} sell scenario
-                          </button>
+                    {stickySectionColSpan > 0 ? (
+                      <>
+                        <td
+                          colSpan={stickySectionColSpan}
+                          className="sticky left-0 z-10 pt-1 pb-1 px-4 bg-emerald-50/30"
+                          style={{ width: stickySectionWidth, minWidth: stickySectionWidth }}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">My Car</span>
+                            {onToggleSellScenario && (
+                              <button
+                                onClick={onToggleSellScenario}
+                                className="text-[11px] text-slate-400 hover:text-slate-600 cursor-pointer"
+                              >
+                                {showSellScenario ? 'Hide' : 'Show'} sell scenario
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        {trailingSectionColSpan > 0 && (
+                          <td colSpan={trailingSectionColSpan} className="pt-1 pb-1 px-4 bg-emerald-50/30" />
                         )}
-                      </div>
-                    </td>
+                      </>
+                    ) : (
+                      <td colSpan={colCount} className="pt-1 pb-1 px-4 bg-emerald-50/30">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold text-emerald-700 uppercase tracking-wider">My Car</span>
+                          {onToggleSellScenario && (
+                            <button
+                              onClick={onToggleSellScenario}
+                              className="text-[11px] text-slate-400 hover:text-slate-600 cursor-pointer"
+                            >
+                              {showSellScenario ? 'Hide' : 'Show'} sell scenario
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 )}
                 {isFirstCandidate && (
                   <tr>
-                    <td colSpan={colCount} className="pt-3 pb-1 px-4 border-t-2 border-emerald-200">
-                      <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Candidates</span>
-                    </td>
+                    {stickySectionColSpan > 0 ? (
+                      <>
+                        <td
+                          colSpan={stickySectionColSpan}
+                          className="sticky left-0 z-10 pt-3 pb-1 px-4 border-t-2 border-emerald-200 bg-white"
+                          style={{ width: stickySectionWidth, minWidth: stickySectionWidth }}
+                        >
+                          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Candidates</span>
+                        </td>
+                        {trailingSectionColSpan > 0 && (
+                          <td colSpan={trailingSectionColSpan} className="pt-3 pb-1 px-4 border-t-2 border-emerald-200 bg-white" />
+                        )}
+                      </>
+                    ) : (
+                      <td colSpan={colCount} className="pt-3 pb-1 px-4 border-t-2 border-emerald-200">
+                        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Candidates</span>
+                      </td>
+                    )}
                   </tr>
                 )}
                 <tr

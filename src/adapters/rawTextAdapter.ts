@@ -1,5 +1,5 @@
 import type { ListingAdapter, ParseResult, FieldMeta } from '../types';
-import { detectSourceFromText } from './detectSource';
+import { detectSourceFromText, extractFirstUrlFromText } from './detectSource';
 
 // ---------- Make / Model / Trim vocabularies ----------
 //
@@ -184,7 +184,9 @@ export const rawTextAdapter: ListingAdapter = {
     // If the pasted text contains a recognizable listing URL, use the
     // URL's origin as the canonical source so the board labels it
     // correctly (e.g. "Facebook" instead of "Pasted Text").
+    const embeddedUrl = extractFirstUrlFromText(text);
     const embedded = detectSourceFromText(text);
+    const hasUnrecognizedEmbeddedUrl = embeddedUrl !== null && embedded === null;
 
     // Extract year (4 digits, 1990-2030)
     const yearMatch = text.match(/\b(19\d{2}|20[0-3]\d)\b/);
@@ -272,6 +274,11 @@ export const rawTextAdapter: ListingAdapter = {
     if (!make) warnings.push('Could not identify make');
     if (make && !model) warnings.push(`Could not identify model for ${make}`);
     if (!price) warnings.push('Could not extract price');
+    if (hasUnrecognizedEmbeddedUrl) {
+      warnings.push('An embedded URL doesn’t match a supported source we can identify confidently.');
+      warnings.push('We kept the URL, but did not infer the source.');
+      warnings.push('The listing will stay labeled as Pasted Text unless you enter a recognized source URL.');
+    }
 
     return {
       listing: {

@@ -9,6 +9,11 @@ import { detectSourceFromUrl } from '../../adapters/detectSource';
 import { inferDepreciationProfile } from '../../data/vehicleReference';
 import { buildFieldMetaFromLookup } from '../../services/vehicleResolver';
 import { decodeVin, validateVin } from '../../services/vinDecoder';
+import {
+  getPastedTextSourceUrlWarningLines,
+  isUnrecognizedPastedTextSourceUrl,
+  resolveAddListingSource,
+} from './sourceUrlFeedback';
 import { DerivedInfoPreview } from './DerivedInfoPreview';
 import type { VehicleRow, TitleStatus, Drivetrain, TransmissionType, ConditionLevel, ParseResult, FieldMeta } from '../../types';
 
@@ -19,10 +24,11 @@ export function AddListingDialog() {
   const showToast = useToastStore((s) => s.showToast);
   const { addVehicle } = useVehicleActions();
 
-  const [tab, setTab] = useState<Tab>('manual');
+  const [tab, setTab] = useState<Tab>('text');
   const [pasteInput, setPasteInput] = useState('');
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
   const [parseWarnings, setParseWarnings] = useState<string[]>([]);
+  const [showTextSourceUrlWarning, setShowTextSourceUrlWarning] = useState(false);
 
   // Manual / review form state
   const [year, setYear] = useState<number | ''>(2020);
@@ -49,14 +55,46 @@ export function AddListingDialog() {
   const lookupYear = typeof year === 'number' ? year : Number.NaN;
   const lookup = useVehicleLookup(lookupYear, make, model, { trim, drivetrain, transmission });
 
+  const textSourceUrlWarnings = tab === 'text' && showTextSourceUrlWarning
+    ? getPastedTextSourceUrlWarningLines(sourceUrl)
+    : [];
+
+  const resetForm = () => {
+    setTab('text');
+    setPasteInput('');
+    setParseResult(null);
+    setParseWarnings([]);
+    setShowTextSourceUrlWarning(false);
+    setYear(2020);
+    setMake('');
+    setModel('');
+    setTrim('');
+    setPrice(0);
+    setMileage(0);
+    setDrivetrain('awd');
+    setTitleStatus('clean');
+    setTransmission('automatic');
+    setSourceUrl('');
+    setCondition('average');
+    setVin('');
+    setVinStatus('idle');
+    setVinMessage(null);
+    setVinDecodedFields(new Set());
+  };
+
+  const handleClose = () => {
+    resetForm();
+    closeAddDialog();
+  };
+
   useEffect(() => {
     if (!isAddDialogOpen) return;
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeAddDialog();
+      if (e.key === 'Escape') handleClose();
     };
     document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
-  }, [isAddDialogOpen, closeAddDialog]);
+  }, [isAddDialogOpen, handleClose]);
 
   // Validation: required fields and reasonable bounds
   const validationErrors: string[] = [];
@@ -80,7 +118,6 @@ export function AddListingDialog() {
     setDrivetrain('awd');
     setTitleStatus('clean');
     setTransmission('automatic');
-    setSourceUrl('');
     setCondition('average');
     setVin('');
     setVinStatus('idle');
@@ -90,6 +127,7 @@ export function AddListingDialog() {
 
   const handleParse = async () => {
     const trimmedInput = pasteInput.trim();
+    const existingSourceUrl = sourceUrl.trim();
     const adapter = resolveAdapter(trimmedInput);
     if (!adapter) {
       if (tab === 'url') {
@@ -98,12 +136,18 @@ export function AddListingDialog() {
           'Automatic extraction from pasted URLs is not supported yet.',
           'We only saved the source URL from this step.',
           detectedSource === 'dealer'
-            ? 'This URL will be tracked as a generic dealer/source URL.'
+            ? 'This URL doesn’t match a supported source we can identify confidently.'
             : `Source detected from URL: ${detectedSource}.`,
-          'Paste the listing text on the Text tab or enter the vehicle details manually before saving.',
+          detectedSource === 'dealer'
+            ? 'We kept the URL, but did not infer the source.'
+            : 'Paste the listing text on the Text tab or enter the vehicle details manually before saving.',
+          detectedSource === 'dealer'
+            ? 'Continue by entering the vehicle details manually or pasting listing text on the Text tab.'
+            : 'Paste the listing text on the Text tab or enter the vehicle details manually before saving.',
         ];
 
         resetReviewForm();
+        setShowTextSourceUrlWarning(false);
         setParseResult({
           listing: {
             source: detectedSource,
@@ -140,7 +184,7 @@ export function AddListingDialog() {
     if (result.suggestedTitleStatus === 'rebuilt' || result.suggestedTitleStatus === 'salvage' || result.suggestedTitleStatus === 'clean') {
       setTitleStatus(result.suggestedTitleStatus);
     }
-    if (result.listing.sourceUrl) setSourceUrl(result.listing.sourceUrl);
+    if (result.listing.sourceUrl && !existingSourceUrl) setSourceUrl(result.listing.sourceUrl);
   };
 
   /** Decode the entered VIN and pre-fill empty form fields. We deliberately
@@ -205,6 +249,9 @@ export function AddListingDialog() {
   };
 
   const handleSave = async () => {
+    if (tab === 'text' && isUnrecognizedPastedTextSourceUrl(sourceUrl)) {
+      setShowTextSourceUrlWarning(true);
+    }
     if (!canSave) return;
     if (typeof year !== 'number') return;
 
@@ -243,20 +290,15 @@ export function AddListingDialog() {
     }
 
     // Source resolution, priority order:
-    //   1. If the user typed a Source URL, classify that URL — this lets
-    //      a URL pasted into the optional field on the Text or Manual tab
-    //      promote the source from "Pasted Text" / "Manual" to the actual
-    //      site (e.g. Facebook, KSL, Cars.com).
+    //   1. If the user typed a recognized Source URL, classify that URL.
     //   2. Otherwise fall back to whatever the adapter detected.
-    //   3. Otherwise use the tab default.
+    //   3. Otherwise use the tab default for the entry path.
     const sourceUrlTrimmed = sourceUrl.trim();
-    const urlFieldSource = sourceUrlTrimmed ? detectSourceFromUrl(sourceUrlTrimmed) : null;
-    const fallbackSource = tab === 'url'
-      ? (parseResult?.listing.source ?? 'manual')
-      : tab === 'text'
-        ? (parseResult?.listing.source ?? 'raw_text')
-        : 'manual';
-    const resolvedSource = urlFieldSource ?? fallbackSource;
+    const resolvedSource = resolveAddListingSource({
+      tab,
+      sourceUrl,
+      parsedListingSource: parseResult?.listing.source,
+    });
 
     const vehicle: VehicleRow = {
       id: crypto.randomUUID(),
@@ -314,30 +356,9 @@ export function AddListingDialog() {
     }
   };
 
-  const resetForm = () => {
-    setPasteInput('');
-    setParseResult(null);
-    setParseWarnings([]);
-    setYear(2020);
-    setMake('');
-    setModel('');
-    setTrim('');
-    setPrice(0);
-    setMileage(0);
-    setDrivetrain('awd');
-    setTitleStatus('clean');
-    setTransmission('automatic');
-    setSourceUrl('');
-    setCondition('average');
-    setVin('');
-    setVinStatus('idle');
-    setVinMessage(null);
-    setVinDecodedFields(new Set());
-  };
-
   return (
     <>
-      <div className="fixed inset-0 bg-black/30 z-50" onClick={closeAddDialog} />
+      <div className="fixed inset-0 bg-black/30 z-50" onClick={handleClose} />
       <div
         className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[560px] max-w-[95vw] max-h-[90vh] bg-white rounded-xl shadow-2xl z-50 flex flex-col overflow-hidden"
         role="dialog"
@@ -347,7 +368,7 @@ export function AddListingDialog() {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
           <h2 id="add-listing-title" className="text-lg font-semibold text-slate-900">Add Listing</h2>
-          <button onClick={closeAddDialog} className="p-1 hover:bg-slate-100 rounded" aria-label="Close add listing dialog">
+          <button onClick={handleClose} className="p-1 hover:bg-slate-100 rounded" aria-label="Close add listing dialog">
             <X size={18} className="text-slate-500" />
           </button>
         </div>
@@ -355,13 +376,18 @@ export function AddListingDialog() {
         {/* Tabs */}
         <div className="flex border-b border-slate-200" role="tablist" aria-label="Input method">
           {([
-            { id: 'manual' as Tab, label: 'Manual Entry', icon: PenLine },
             { id: 'text' as Tab, label: 'Paste Text', icon: FileText },
             { id: 'url' as Tab, label: 'Paste URL', icon: Link },
+            { id: 'manual' as Tab, label: 'Manual Entry', icon: PenLine },
           ]).map(({ id, label, icon: Icon }) => (
             <button
               key={id}
-              onClick={() => { setTab(id); setParseResult(null); setParseWarnings([]); }}
+              onClick={() => {
+                setTab(id);
+                setParseResult(null);
+                setParseWarnings([]);
+                setShowTextSourceUrlWarning(false);
+              }}
               className={`flex items-center gap-1.5 px-4 py-2.5 text-sm border-b-2 transition-colors cursor-pointer ${
                 tab === id
                   ? 'border-blue-500 text-blue-600 font-semibold bg-blue-50/40'
@@ -402,6 +428,19 @@ export function AddListingDialog() {
                 value={pasteInput}
                 onChange={(e) => setPasteInput(e.target.value)}
               />
+              {tab === 'text' && (
+                <FormField label="Source URL (optional)">
+                  <OptionalSourceUrlField
+                    value={sourceUrl}
+                    onChange={(value) => {
+                      setSourceUrl(value);
+                      setShowTextSourceUrlWarning(false);
+                    }}
+                    onBlur={() => setShowTextSourceUrlWarning(true)}
+                    warningLines={textSourceUrlWarnings}
+                  />
+                </FormField>
+              )}
               <button
                 onClick={handleParse}
                 disabled={!pasteInput.trim()}
@@ -569,7 +608,17 @@ export function AddListingDialog() {
               </p>
 
               <FormField label="Source URL (optional)">
-                <input type="text" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} className="form-input" placeholder="https://..." />
+                <OptionalSourceUrlField
+                  value={sourceUrl}
+                  onChange={(value) => {
+                    setSourceUrl(value);
+                    if (tab === 'text') setShowTextSourceUrlWarning(false);
+                  }}
+                  onBlur={() => {
+                    if (tab === 'text') setShowTextSourceUrlWarning(true);
+                  }}
+                  warningLines={tab === 'text' ? textSourceUrlWarnings : []}
+                />
               </FormField>
             </div>
           )}
@@ -584,7 +633,7 @@ export function AddListingDialog() {
               </div>
             )}
             <div className="flex items-center justify-end gap-3 px-5 py-4">
-              <button onClick={() => { resetForm(); closeAddDialog(); }} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer">
+              <button onClick={handleClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer">
                 Cancel
               </button>
               <button
@@ -610,6 +659,40 @@ function FormField({ label, children, required }: { label: string; children: Rea
         {required && <span className="text-red-500 ml-0.5" aria-label="required">*</span>}
       </label>
       {children}
+    </div>
+  );
+}
+
+function OptionalSourceUrlField({
+  value,
+  onChange,
+  onBlur,
+  warningLines,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onBlur: () => void;
+  warningLines: string[];
+}) {
+  return (
+    <div>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
+        className="form-input"
+        placeholder="https://..."
+      />
+      {warningLines.length > 0 && (
+        <div className="mt-2 space-y-1">
+          {warningLines.map((line) => (
+            <p key={line} className="text-xs text-amber-700">
+              {line}
+            </p>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
