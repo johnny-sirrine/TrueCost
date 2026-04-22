@@ -1,0 +1,403 @@
+import type { VehicleRow } from '../types';
+import { lookupEpaReference, inferVehicleClass, inferBodyStyle, inferDepreciationProfile } from './vehicleReference';
+
+function makeId(): string {
+  return crypto.randomUUID();
+}
+
+function now(): string {
+  return new Date().toISOString();
+}
+
+// Helper to auto-derive canonical fields from make/model
+function deriveCanonical(make: string, model: string) {
+  const ref = lookupEpaReference(make, model);
+  return {
+    vehicleClass: inferVehicleClass(make, model),
+    bodyStyle: inferBodyStyle(make, model),
+    epaCombinedMpg: ref?.combinedMpg,
+    cylinders: ref?.cylinders,
+  };
+}
+
+const timestamp = now();
+
+export function createSeedVehicles(): VehicleRow[] {
+  return [
+    // 0. Current Car — 2016 Honda CR-V EX AWD
+    {
+      id: makeId(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      listing: {
+        source: 'manual',
+        rawTitle: '2016 Honda CR-V EX AWD',
+        sellerType: 'private',
+      },
+      canonical: {
+        year: 2016,
+        make: 'Honda',
+        model: 'CR-V',
+        trim: 'EX',
+        drivetrain: 'awd',
+        engineType: 'gas',
+        transmissionType: 'cvt',
+        ...deriveCanonical('Honda', 'CR-V'),
+      },
+      user: {
+        listingPrice: 0,
+        mileage: 145000,
+        titleStatus: 'clean',
+        conditionLevel: 'average',
+        catchUpCost: 0,
+        notes: 'My current daily driver',
+        tags: [],
+        pinned: false,
+        archived: false,
+        isCurrentCar: true,
+        depreciationProfileId: inferDepreciationProfile('Honda', 'CR-V', 2016, 'clean'),
+        overrides: {},
+      },
+      fieldMeta: {
+        year: { origin: 'extracted', confidence: 'high' },
+        make: { origin: 'extracted', confidence: 'high' },
+        model: { origin: 'extracted', confidence: 'high' },
+        listingPrice: { origin: 'assumed', confidence: 'high', note: 'Current car — no purchase cost' },
+        mileage: { origin: 'extracted', confidence: 'high' },
+        titleStatus: { origin: 'extracted', confidence: 'high' },
+        drivetrain: { origin: 'inferred', confidence: 'high', note: 'EX trim AWD' },
+      },
+    },
+
+    // 1. 2015 Subaru Forester (rebuilt)
+    {
+      id: makeId(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      listing: {
+        source: 'ksl',
+        sourceUrl: 'https://cars.ksl.com/listing/10478590',
+        rawTitle: '2015 Subaru Forester',
+        sellerType: 'private',
+      },
+      canonical: {
+        year: 2015,
+        make: 'Subaru',
+        model: 'Forester',
+        trim: '2.5i Premium',
+        drivetrain: 'awd',
+        engineType: 'gas',
+        transmissionType: 'cvt',
+        ...deriveCanonical('Subaru', 'Forester'),
+      },
+      user: {
+        listingPrice: 7700,
+        mileage: 107000,
+        titleStatus: 'rebuilt',
+        conditionLevel: 'average',
+        catchUpCost: 0,
+        notes: '',
+        tags: [],
+        pinned: false,
+        archived: false,
+        isCurrentCar: false,
+        depreciationProfileId: inferDepreciationProfile('Subaru', 'Forester', 2015, 'rebuilt'),
+        overrides: {},
+      },
+      fieldMeta: {
+        year: { origin: 'extracted', confidence: 'high' },
+        make: { origin: 'extracted', confidence: 'high' },
+        model: { origin: 'extracted', confidence: 'high' },
+        listingPrice: { origin: 'extracted', confidence: 'high' },
+        mileage: { origin: 'extracted', confidence: 'high' },
+        titleStatus: { origin: 'extracted', confidence: 'high' },
+        drivetrain: { origin: 'inferred', confidence: 'high', note: 'All Foresters are AWD' },
+        trim: { origin: 'inferred', confidence: 'medium' },
+      },
+    },
+
+    // 2. 2017 Mazda CX-9 (rebuilt)
+    {
+      id: makeId(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      listing: {
+        source: 'ksl',
+        sourceUrl: 'https://cars.ksl.com/listing/10515077',
+        rawTitle: '2017 Mazda CX-9',
+        sellerType: 'private',
+      },
+      canonical: {
+        year: 2017,
+        make: 'Mazda',
+        model: 'CX-9',
+        trim: 'Touring',
+        drivetrain: 'awd',
+        engineType: 'gas',
+        transmissionType: 'automatic',
+        ...deriveCanonical('Mazda', 'CX-9'),
+      },
+      user: {
+        listingPrice: 9995,
+        mileage: 101000,
+        titleStatus: 'rebuilt',
+        conditionLevel: 'average',
+        catchUpCost: 0,
+        notes: '',
+        tags: [],
+        pinned: false,
+        archived: false,
+        isCurrentCar: false,
+        depreciationProfileId: inferDepreciationProfile('Mazda', 'CX-9', 2017, 'rebuilt'),
+        overrides: {},
+      },
+      fieldMeta: {
+        year: { origin: 'extracted', confidence: 'high' },
+        make: { origin: 'extracted', confidence: 'high' },
+        model: { origin: 'extracted', confidence: 'high' },
+        listingPrice: { origin: 'extracted', confidence: 'high' },
+        mileage: { origin: 'extracted', confidence: 'high' },
+        titleStatus: { origin: 'extracted', confidence: 'high' },
+        drivetrain: { origin: 'inferred', confidence: 'medium' },
+        trim: { origin: 'inferred', confidence: 'medium' },
+      },
+    },
+
+    // 3. 2006 Toyota 4Runner
+    {
+      id: makeId(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      listing: {
+        source: 'manual',
+        rawTitle: '2006 Toyota 4Runner',
+        sellerType: 'private',
+      },
+      canonical: {
+        ...deriveCanonical('Toyota', '4Runner'),
+        year: 2006,
+        make: 'Toyota',
+        model: '4Runner',
+        trim: 'SR5',
+        drivetrain: '4wd',
+        engineType: 'gas',
+        cylinders: 6,
+        transmissionType: 'automatic',
+      },
+      user: {
+        listingPrice: 8500,
+        mileage: 162900,
+        titleStatus: 'clean',
+        conditionLevel: 'average',
+        catchUpCost: 0,
+        notes: '',
+        tags: [],
+        pinned: false,
+        archived: false,
+        isCurrentCar: false,
+        depreciationProfileId: inferDepreciationProfile('Toyota', '4Runner', 2006, 'clean'),
+        overrides: {},
+      },
+      fieldMeta: {
+        year: { origin: 'extracted', confidence: 'high' },
+        make: { origin: 'extracted', confidence: 'high' },
+        model: { origin: 'extracted', confidence: 'high' },
+        listingPrice: { origin: 'extracted', confidence: 'high' },
+        mileage: { origin: 'extracted', confidence: 'high' },
+        titleStatus: { origin: 'extracted', confidence: 'high' },
+        drivetrain: { origin: 'inferred', confidence: 'medium', note: 'Assumed 4WD for 4Runner' },
+        trim: { origin: 'inferred', confidence: 'medium' },
+      },
+    },
+
+    // 4. 2016 Honda Pilot EX-L AWD
+    {
+      id: makeId(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      listing: {
+        source: 'ksl',
+        sourceUrl: 'https://cars.ksl.com/listing/10499273',
+        rawTitle: '2016 Honda Pilot EX-L AWD',
+        sellerType: 'private',
+      },
+      canonical: {
+        year: 2016,
+        make: 'Honda',
+        model: 'Pilot',
+        trim: 'EX-L',
+        drivetrain: 'awd',
+        engineType: 'gas',
+        transmissionType: 'automatic',
+        ...deriveCanonical('Honda', 'Pilot'),
+      },
+      user: {
+        listingPrice: 10500,
+        mileage: 138000,
+        titleStatus: 'clean',
+        conditionLevel: 'average',
+        catchUpCost: 0,
+        notes: '',
+        tags: [],
+        pinned: false,
+        archived: false,
+        isCurrentCar: false,
+        depreciationProfileId: inferDepreciationProfile('Honda', 'Pilot', 2016, 'clean'),
+        overrides: {},
+      },
+      fieldMeta: {
+        year: { origin: 'extracted', confidence: 'high' },
+        make: { origin: 'extracted', confidence: 'high' },
+        model: { origin: 'extracted', confidence: 'high' },
+        listingPrice: { origin: 'extracted', confidence: 'high' },
+        mileage: { origin: 'extracted', confidence: 'high' },
+        titleStatus: { origin: 'extracted', confidence: 'high' },
+        drivetrain: { origin: 'extracted', confidence: 'high', note: 'AWD in listing title' },
+        trim: { origin: 'extracted', confidence: 'high' },
+      },
+    },
+
+    // 5. 2014 Honda Pilot EX-L
+    {
+      id: makeId(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      listing: {
+        source: 'ksl',
+        sourceUrl: 'https://cars.ksl.com/listing/10482879',
+        rawTitle: '2014 Honda Pilot EX-L',
+        sellerType: 'private',
+      },
+      canonical: {
+        year: 2014,
+        make: 'Honda',
+        model: 'Pilot',
+        trim: 'EX-L',
+        drivetrain: 'awd',
+        engineType: 'gas',
+        transmissionType: 'automatic',
+        ...deriveCanonical('Honda', 'Pilot'),
+      },
+      user: {
+        listingPrice: 10500,
+        mileage: 131000,
+        titleStatus: 'clean',
+        conditionLevel: 'average',
+        catchUpCost: 0,
+        notes: '',
+        tags: [],
+        pinned: false,
+        archived: false,
+        isCurrentCar: false,
+        depreciationProfileId: inferDepreciationProfile('Honda', 'Pilot', 2014, 'clean'),
+        overrides: {},
+      },
+      fieldMeta: {
+        year: { origin: 'extracted', confidence: 'high' },
+        make: { origin: 'extracted', confidence: 'high' },
+        model: { origin: 'extracted', confidence: 'high' },
+        listingPrice: { origin: 'extracted', confidence: 'high' },
+        mileage: { origin: 'extracted', confidence: 'high' },
+        titleStatus: { origin: 'extracted', confidence: 'high' },
+        drivetrain: { origin: 'inferred', confidence: 'medium', note: 'Assumed AWD for Pilot EX-L' },
+        trim: { origin: 'extracted', confidence: 'high' },
+      },
+    },
+
+    // 6. 2018 Kia Sorento AWD
+    {
+      id: makeId(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      listing: {
+        source: 'ksl',
+        sourceUrl: 'https://cars.ksl.com/listing/10506903',
+        rawTitle: '2018 Kia Sorento AWD',
+        sellerType: 'private',
+      },
+      canonical: {
+        year: 2018,
+        make: 'Kia',
+        model: 'Sorento',
+        trim: 'LX',
+        drivetrain: 'awd',
+        engineType: 'gas',
+        transmissionType: 'automatic',
+        ...deriveCanonical('Kia', 'Sorento'),
+      },
+      user: {
+        listingPrice: 12000,
+        mileage: 127000,
+        titleStatus: 'clean',
+        conditionLevel: 'average',
+        catchUpCost: 0,
+        notes: '',
+        tags: [],
+        pinned: false,
+        archived: false,
+        isCurrentCar: false,
+        depreciationProfileId: inferDepreciationProfile('Kia', 'Sorento', 2018, 'clean'),
+        overrides: {},
+      },
+      fieldMeta: {
+        year: { origin: 'extracted', confidence: 'high' },
+        make: { origin: 'extracted', confidence: 'high' },
+        model: { origin: 'extracted', confidence: 'high' },
+        listingPrice: { origin: 'extracted', confidence: 'high' },
+        mileage: { origin: 'extracted', confidence: 'high' },
+        titleStatus: { origin: 'extracted', confidence: 'high' },
+        drivetrain: { origin: 'extracted', confidence: 'high', note: 'AWD in listing title' },
+        trim: { origin: 'inferred', confidence: 'medium' },
+      },
+    },
+
+    // 7. 2012 Nissan Frontier SV 4x4 (manual)
+    {
+      id: makeId(),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      listing: {
+        source: 'ksl',
+        sourceUrl: 'https://cars.ksl.com/listing/10513710',
+        rawTitle: '2012 Nissan Frontier SV 4x4',
+        sellerType: 'private',
+      },
+      canonical: {
+        ...deriveCanonical('Nissan', 'Frontier'),
+        year: 2012,
+        make: 'Nissan',
+        model: 'Frontier',
+        trim: 'SV',
+        drivetrain: '4wd',
+        engineType: 'gas',
+        cylinders: 6,
+        transmissionType: 'manual',
+      },
+      user: {
+        listingPrice: 10995,
+        mileage: 132438,
+        titleStatus: 'clean',
+        conditionLevel: 'average',
+        catchUpCost: 0,
+        notes: '',
+        tags: [],
+        pinned: false,
+        archived: false,
+        isCurrentCar: false,
+        depreciationProfileId: inferDepreciationProfile('Nissan', 'Frontier', 2012, 'clean'),
+        overrides: {},
+      },
+      fieldMeta: {
+        year: { origin: 'extracted', confidence: 'high' },
+        make: { origin: 'extracted', confidence: 'high' },
+        model: { origin: 'extracted', confidence: 'high' },
+        listingPrice: { origin: 'extracted', confidence: 'high' },
+        mileage: { origin: 'extracted', confidence: 'high' },
+        titleStatus: { origin: 'extracted', confidence: 'high' },
+        drivetrain: { origin: 'extracted', confidence: 'high', note: '4x4 in listing title' },
+        trim: { origin: 'extracted', confidence: 'high' },
+        transmissionType: { origin: 'extracted', confidence: 'high', note: 'Manual transmission' },
+      },
+    },
+  ];
+}
