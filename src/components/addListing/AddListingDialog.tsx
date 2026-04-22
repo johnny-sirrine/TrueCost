@@ -25,7 +25,7 @@ export function AddListingDialog() {
   const [parseWarnings, setParseWarnings] = useState<string[]>([]);
 
   // Manual / review form state
-  const [year, setYear] = useState(2020);
+  const [year, setYear] = useState<number | ''>(2020);
   const [make, setMake] = useState('');
   const [model, setModel] = useState('');
   const [trim, setTrim] = useState('');
@@ -46,7 +46,8 @@ export function AddListingDialog() {
   const [vinMessage, setVinMessage] = useState<string | null>(null);
   const [vinDecodedFields, setVinDecodedFields] = useState<Set<string>>(new Set());
 
-  const lookup = useVehicleLookup(year, make, model, { trim, drivetrain, transmission });
+  const lookupYear = typeof year === 'number' ? year : Number.NaN;
+  const lookup = useVehicleLookup(lookupYear, make, model, { trim, drivetrain, transmission });
 
   useEffect(() => {
     if (!isAddDialogOpen) return;
@@ -59,29 +60,76 @@ export function AddListingDialog() {
 
   // Validation: required fields and reasonable bounds
   const validationErrors: string[] = [];
+  if (year === '') validationErrors.push('Year is required');
+  else if (year < 1990 || year > 2030) validationErrors.push('Year must be between 1990 and 2030');
   if (!make.trim()) validationErrors.push('Make is required');
   if (!model.trim()) validationErrors.push('Model is required');
   if (price <= 0) validationErrors.push('Price must be greater than $0');
   if (mileage <= 0) validationErrors.push('Mileage must be greater than 0');
-  if (year < 1990 || year > 2030) validationErrors.push('Year must be between 1990 and 2030');
   const canSave = validationErrors.length === 0;
 
   if (!isAddDialogOpen) return null;
 
+  const resetReviewForm = (nextYear: number | '' = '') => {
+    setYear(nextYear);
+    setMake('');
+    setModel('');
+    setTrim('');
+    setPrice(0);
+    setMileage(0);
+    setDrivetrain('awd');
+    setTitleStatus('clean');
+    setTransmission('automatic');
+    setSourceUrl('');
+    setCondition('average');
+    setVin('');
+    setVinStatus('idle');
+    setVinMessage(null);
+    setVinDecodedFields(new Set());
+  };
+
   const handleParse = async () => {
-    const adapter = resolveAdapter(pasteInput);
+    const trimmedInput = pasteInput.trim();
+    const adapter = resolveAdapter(trimmedInput);
     if (!adapter) {
+      if (tab === 'url') {
+        const detectedSource = detectSourceFromUrl(trimmedInput) ?? 'dealer';
+        const warnings = [
+          'Automatic extraction from pasted URLs is not supported yet.',
+          'We only saved the source URL from this step.',
+          detectedSource === 'dealer'
+            ? 'This URL will be tracked as a generic dealer/source URL.'
+            : `Source detected from URL: ${detectedSource}.`,
+          'Paste the listing text on the Text tab or enter the vehicle details manually before saving.',
+        ];
+
+        resetReviewForm();
+        setParseResult({
+          listing: {
+            source: detectedSource,
+            sourceUrl: trimmedInput,
+          },
+          canonical: {},
+          fieldMeta: {},
+          warnings,
+        });
+        setParseWarnings(warnings);
+        setSourceUrl(trimmedInput);
+        return;
+      }
+
       setParseWarnings(['Could not determine how to parse this input.']);
       return;
     }
     const result = await adapter.parse(pasteInput);
+    resetReviewForm();
     setParseResult(result);
     setParseWarnings(result.warnings);
 
-    // Pre-fill form from parse result. Only fields the adapter was CONFIDENT
-    // about are populated — everything else keeps its default so warnings
-    // remain visible to the user.
-    if (result.canonical.year) setYear(result.canonical.year);
+    // Pre-fill only fields the adapter was actually confident about.
+    // Everything else stays blank/default so the review step reflects
+    // only what we truly know from the pasted input.
+    if (result.canonical.year !== undefined) setYear(result.canonical.year);
     if (result.canonical.make) setMake(result.canonical.make);
     if (result.canonical.model) setModel(result.canonical.model);
     if (result.canonical.trim) setTrim(result.canonical.trim);
@@ -127,7 +175,7 @@ export function AddListingDialog() {
 
     // Track which fields we populated so we can stamp provenance on save.
     const populated = new Set<string>();
-    if (decoded.year && year === 2020) {
+    if (decoded.year && (year === '' || year === 2020)) {
       setYear(decoded.year);
       populated.add('year');
     }
@@ -158,6 +206,9 @@ export function AddListingDialog() {
 
   const handleSave = async () => {
     if (!canSave) return;
+    if (typeof year !== 'number') return;
+
+    const vehicleYear = year;
 
     const now = new Date().toISOString();
 
@@ -214,7 +265,7 @@ export function AddListingDialog() {
       listing: {
         source: resolvedSource,
         sourceUrl: sourceUrlTrimmed || parseResult?.listing.sourceUrl || undefined,
-        rawTitle: parseResult?.listing.rawTitle ?? `${year} ${make} ${model}`,
+        rawTitle: parseResult?.listing.rawTitle ?? `${vehicleYear} ${make} ${model}`,
         rawDescription: parseResult?.listing.rawDescription,
         rawPrice: price,
         rawMileage: mileage,
@@ -223,7 +274,7 @@ export function AddListingDialog() {
         vin: vinValidation?.valid ? vinValidation.normalized : undefined,
       },
       canonical: {
-        year,
+        year: vehicleYear,
         make,
         model,
         trim: trim || undefined,
@@ -246,7 +297,7 @@ export function AddListingDialog() {
         pinned: false,
         archived: false,
         isCurrentCar: false,
-        depreciationProfileId: inferDepreciationProfile(make, model, year, titleStatus),
+        depreciationProfileId: inferDepreciationProfile(make, model, vehicleYear, titleStatus),
         overrides: {},
       },
       fieldMeta,
@@ -254,7 +305,7 @@ export function AddListingDialog() {
 
     try {
       await addVehicle(vehicle);
-      showToast(`Added ${year} ${make} ${model} to the board`, 'success');
+      showToast(`Added ${vehicleYear} ${make} ${model} to the board`, 'success');
       resetForm();
       closeAddDialog();
     } catch (err) {
@@ -334,7 +385,7 @@ export function AddListingDialog() {
                 {tab === 'url' ? (
                   <>
                     <div className="font-medium text-slate-700 mb-1">Supported listing sources</div>
-                    <div>Craigslist, Facebook Marketplace, eBay Motors, Cars.com, CarGurus, and similar listing pages. URL parsing is best-effort — you'll review all fields before saving.</div>
+                    <div>Paste a listing URL to capture its source and URL. Automatic extraction from listing pages is not supported yet in this version, so you'll fill in the vehicle details manually after continuing.</div>
                   </>
                 ) : (
                   <>
@@ -356,7 +407,7 @@ export function AddListingDialog() {
                 disabled={!pasteInput.trim()}
                 className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
-                Parse
+                {tab === 'url' ? 'Continue' : 'Parse'}
               </button>
             </div>
           )}
@@ -376,13 +427,23 @@ export function AddListingDialog() {
             <div className="space-y-4">
               {tab !== 'manual' && (
                 <div className="text-xs text-slate-500 mb-2">
-                  Review and correct the extracted fields below before saving.
+                  {tab === 'url'
+                    ? 'URL paste currently saves the source URL only. Fill in the vehicle details below before saving.'
+                    : 'Review and correct the extracted fields below before saving.'}
                 </div>
               )}
 
               <div className="grid grid-cols-3 gap-3">
                 <FormField label="Year" required>
-                  <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="form-input" min={1990} max={2030} />
+                  <input
+                    type="number"
+                    value={year}
+                    onChange={(e) => setYear(e.target.value === '' ? '' : Number(e.target.value))}
+                    className="form-input"
+                    min={1990}
+                    max={2030}
+                    placeholder="2018"
+                  />
                 </FormField>
                 <FormField label="Make" required>
                   <input type="text" value={make} onChange={(e) => setMake(e.target.value)} className="form-input" placeholder="Toyota" />

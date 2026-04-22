@@ -18,15 +18,12 @@ export const kslAdapter: ListingAdapter = {
         source: 'ksl',
         sourceUrl: input.trim(),
       },
-      canonical: {
-        year: 2020,
-        make: '',
-        model: '',
-      },
+      canonical: {},
       fieldMeta: {},
       warnings: [
-        'KSL URL detected but automatic scraping is not available in v1.',
-        'Please paste the listing text or enter vehicle details manually.',
+        'KSL URL detected, but automatic extraction from pasted URLs is not supported yet.',
+        'We only saved the source URL from this step.',
+        'Paste the listing text on the Text tab or enter the vehicle details manually before saving.',
         listingId ? `KSL listing ID: ${listingId}` : '',
       ].filter(Boolean),
     };

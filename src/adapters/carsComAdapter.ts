@@ -12,11 +12,12 @@ export const carsComAdapter: ListingAdapter = {
         source: 'carscom',
         sourceUrl: input.trim(),
       },
-      canonical: { year: 2020, make: '', model: '' },
+      canonical: {},
       fieldMeta: {},
       warnings: [
-        'Cars.com URL detected but automatic scraping is not available in v1.',
-        'Please paste the listing text or enter vehicle details manually.',
+        'Cars.com URL detected, but automatic extraction from pasted URLs is not supported yet.',
+        'We only saved the source URL from this step.',
+        'Paste the listing text on the Text tab or enter the vehicle details manually before saving.',
       ],
     };
   },

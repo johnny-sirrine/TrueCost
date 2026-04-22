@@ -153,6 +153,20 @@ function findTrim(text: string, make: string, searchFrom: number): string | unde
   return undefined;
 }
 
+function parseMileage(text: string): number | undefined {
+  const mileageMatch = text.match(
+    /\b(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(k)?\s*(?:miles?|mi)\b/i,
+  );
+  if (!mileageMatch) return undefined;
+
+  const numeric = Number(mileageMatch[1].replace(/,/g, ''));
+  if (!Number.isFinite(numeric)) return undefined;
+
+  return mileageMatch[2]
+    ? Math.round(numeric * 1000)
+    : Math.round(numeric);
+}
+
 // Regex-based extraction from pasted listing text.
 // This is the primary "smart" ingestion path in v1.
 export const rawTextAdapter: ListingAdapter = {
@@ -182,9 +196,8 @@ export const rawTextAdapter: ListingAdapter = {
     const price = priceMatch ? parseInt(priceMatch[1].replace(/,/g, '')) : undefined;
     if (price) fieldMeta['listingPrice'] = { origin: 'extracted', confidence: 'high' };
 
-    // Extract mileage (XXX,XXX mi/miles/k)
-    const mileageMatch = text.match(/([\d,]+)\s*(?:miles?|mi\b|k\s*mi)/i);
-    const mileage = mileageMatch ? parseInt(mileageMatch[1].replace(/,/g, '')) : undefined;
+    // Extract mileage (XXX,XXX mi/miles or shorthand like 120k mi)
+    const mileage = parseMileage(text);
     if (mileage) fieldMeta['mileage'] = { origin: 'extracted', confidence: 'medium', note: 'Extracted from text pattern' };
 
     // Extract make, model, trim — allowlist-driven so bad tokens never leak through

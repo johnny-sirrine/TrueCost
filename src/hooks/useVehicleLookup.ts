@@ -43,7 +43,7 @@ export function useVehicleLookup(
   useEffect(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
 
-    if (!make.trim() || !model.trim()) {
+    if (!make.trim() || !model.trim() || !Number.isFinite(year) || year < 1900) {
       setStatus('idle');
       setResult(null);
       setSelectedIndex(null);
