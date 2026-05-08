@@ -356,6 +356,14 @@ export function DetailDrawer() {
                 registerActiveEditor={registerActiveDetailEditor}
               />
               <EditableFieldRow
+                label="Modification Level"
+                value={vehicle.user.modificationLevel ?? 'stock'}
+                options={['stock', 'low', 'medium', 'high']}
+                displayTransform={(v) => MODIFICATION_LEVEL_LABELS[v] ?? v}
+                onSave={(v) => handleUserChange('modificationLevel', v as typeof vehicle.user.modificationLevel)}
+                registerActiveEditor={registerActiveDetailEditor}
+              />
+              <EditableFieldRow
                 label="Source"
                 value={vehicle.listing.source}
                 options={['ksl', 'facebook', 'carscom', 'craigslist', 'dealer', 'manual', 'raw_text']}
@@ -379,7 +387,7 @@ export function DetailDrawer() {
               />
             </div>
             <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
-              Condition is relative to what's typical for the vehicle's age — "excellent" on a 15-year-old car means well-maintained for its age, not like new.
+              Condition is relative to what's typical for the vehicle's age. Modification level captures lift, tires, suspension, drivetrain, or overland changes.
             </p>
           </Section>
 
@@ -700,6 +708,13 @@ const CONDITION_LEVEL_LABELS: Record<string, string> = {
   average: 'Average',
   mild_mods: 'Mild mods / wear',
   poor: 'Poor / heavy mods',
+};
+
+const MODIFICATION_LEVEL_LABELS: Record<string, string> = {
+  stock: 'Stock',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
 };
 
 function EditableStatCard({

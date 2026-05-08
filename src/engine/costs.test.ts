@@ -21,6 +21,7 @@ function makeVehicle(overrides: Partial<VehicleRow> = {}): VehicleRow {
       mileage: 162000,
       titleStatus: 'clean',
       conditionLevel: 'average',
+      modificationLevel: 'stock',
       catchUpCost: 0,
       notes: '',
       tags: [],
@@ -74,5 +75,30 @@ describe('computeCosts maintenance estimates', () => {
     expect(costs.costFactors.routine).toEqual([{ label: 'User override', multiplier: 1 }]);
     expect(costs.costFactors.expectedRepairs).toEqual([{ label: 'User override', multiplier: 1 }]);
     expect(costs.costFactors.majorRepairReserve).toEqual([{ label: 'User override', multiplier: 1 }]);
+  });
+
+  it('does not apply make or model reliability multipliers', () => {
+    const assumptions = createDefaultAssumptions();
+    const baseVehicle = makeVehicle({
+      canonical: {
+        ...makeVehicle().canonical,
+        make: 'Honda',
+        model: 'Pilot',
+      },
+    });
+    const sameInputsDifferentBadge = makeVehicle({
+      canonical: {
+        ...makeVehicle().canonical,
+        make: 'Jeep',
+        model: 'Grand Cherokee',
+      },
+    });
+
+    const hondaCosts = computeCosts(baseVehicle, assumptions, 22, 100);
+    const jeepCosts = computeCosts(sameInputsDifferentBadge, assumptions, 22, 100);
+
+    expect(jeepCosts.routineMonthly).toBe(hondaCosts.routineMonthly);
+    expect(jeepCosts.expectedRepairsMonthly).toBe(hondaCosts.expectedRepairsMonthly);
+    expect(jeepCosts.majorRepairReserveMonthly).toBe(hondaCosts.majorRepairReserveMonthly);
   });
 });

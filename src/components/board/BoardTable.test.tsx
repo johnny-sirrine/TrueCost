@@ -101,6 +101,7 @@ function makeComputedVehicle(args: {
         mileage: args.isCurrentCar ? 145000 : 130777,
         titleStatus: args.titleStatus ?? 'clean',
         conditionLevel: 'average',
+        modificationLevel: 'stock',
         catchUpCost: 0,
         notes: args.notes,
         tags: [],

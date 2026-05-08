@@ -15,7 +15,7 @@ import {
   resolveAddListingSource,
 } from './sourceUrlFeedback';
 import { DerivedInfoPreview } from './DerivedInfoPreview';
-import type { VehicleRow, TitleStatus, Drivetrain, TransmissionType, ConditionLevel, ParseResult, FieldMeta } from '../../types';
+import type { VehicleRow, TitleStatus, Drivetrain, TransmissionType, ConditionLevel, ModificationLevel, ParseResult, FieldMeta } from '../../types';
 
 type Tab = 'url' | 'text' | 'manual';
 
@@ -43,6 +43,7 @@ export function AddListingDialog() {
   const [sourceUrl, setSourceUrl] = useState('');
   const [location, setLocation] = useState('');
   const [condition, setCondition] = useState<ConditionLevel>('average');
+  const [modificationLevel, setModificationLevel] = useState<ModificationLevel>('stock');
 
   // VIN decode state. `vin` holds the user input; `vinStatus` tracks the
   // decode request so we can show loading/error feedback; `vinDecodedFields`
@@ -78,6 +79,7 @@ export function AddListingDialog() {
     setSourceUrl('');
     setLocation('');
     setCondition('average');
+    setModificationLevel('stock');
     setVin('');
     setVinStatus('idle');
     setVinMessage(null);
@@ -121,6 +123,7 @@ export function AddListingDialog() {
     setTitleStatus('clean');
     setTransmission('automatic');
     setCondition('average');
+    setModificationLevel('stock');
     setLocation('');
     setVin('');
     setVinStatus('idle');
@@ -341,6 +344,7 @@ export function AddListingDialog() {
         mileage,
         titleStatus,
         conditionLevel: condition,
+        modificationLevel,
         catchUpCost: 0,
         notes: '',
         tags: [],
@@ -578,7 +582,7 @@ export function AddListingDialog() {
                 </FormField>
               </div>
 
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-5 gap-3">
                 <FormField label="Drivetrain">
                   <select value={drivetrain} onChange={(e) => setDrivetrain(e.target.value as Drivetrain)} className="form-input">
                     <option value="awd">AWD</option>
@@ -610,9 +614,17 @@ export function AddListingDialog() {
                     <option value="poor">Poor / heavy mods</option>
                   </select>
                 </FormField>
+                <FormField label="Mod Level">
+                  <select value={modificationLevel} onChange={(e) => setModificationLevel(e.target.value as ModificationLevel)} className="form-input">
+                    <option value="stock">Stock</option>
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </FormField>
               </div>
               <p className="text-xs text-slate-400 -mt-2">
-                Condition is relative to what's typical for the vehicle's age and mileage — "excellent" means well-maintained for its age, not like new.
+                Condition is relative to what's typical for the vehicle's age and mileage. Mod level captures lift, tires, suspension, drivetrain, or overland changes.
               </p>
 
               <div className="grid grid-cols-2 gap-3">

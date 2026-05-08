@@ -55,6 +55,7 @@ function makeVehicle(): VehicleRow {
       mileage: 130777,
       titleStatus: 'clean',
       conditionLevel: 'average',
+      modificationLevel: 'stock',
       catchUpCost: 0,
       notes: '',
       tags: [],
@@ -259,6 +260,27 @@ describe('DetailDrawer', () => {
     await reopenDrawer();
 
     expect(screen.getByText('suv')).toBeTruthy();
+  });
+
+  it('saves modification level immediately and keeps it after close and reopen', async () => {
+    const user = userEvent.setup();
+    render(<DetailDrawer />);
+
+    await startEditingField(user, 'Modification Level');
+    await user.selectOptions(screen.getByRole('combobox'), 'medium');
+
+    await waitFor(() => {
+      expect(currentVehicle.user.modificationLevel).toBe('medium');
+    });
+
+    await user.click(screen.getByLabelText('Close detail panel'));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    await reopenDrawer();
+
+    expect(screen.getByText('Medium')).toBeTruthy();
   });
 
   it('persists a pending text edit when the backdrop closes the drawer', async () => {

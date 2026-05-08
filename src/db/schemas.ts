@@ -75,6 +75,7 @@ const vehicleUserDataSchema = z.object({
   mileage: z.number().min(0),
   titleStatus: z.enum(['clean', 'salvage', 'rebuilt', 'lemon', 'unknown']),
   conditionLevel: z.enum(['excellent', 'average', 'mild_mods', 'poor']),
+  modificationLevel: z.enum(['stock', 'low', 'medium', 'high']).default('stock'),
   catchUpCost: z.number().min(0),
   notes: z.string(),
   tags: z.array(z.string()),

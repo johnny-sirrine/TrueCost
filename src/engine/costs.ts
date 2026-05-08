@@ -35,9 +35,8 @@ export function computeCosts(
     vehicleAge,
     condition: vehicle.user.conditionLevel,
     titleStatus: vehicle.user.titleStatus,
+    modificationLevel: vehicle.user.modificationLevel ?? 'stock',
     ownershipYears: assumptions.ownershipYears,
-    make: vehicle.canonical.make,
-    model: vehicle.canonical.model,
   });
 
   // Fuel: deterministic formula

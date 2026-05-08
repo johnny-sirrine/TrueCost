@@ -1,10 +1,9 @@
 import type { CostEstimateFactor, CostEstimateFactors } from '../types/evaluation';
-import type { VehicleClass, ConditionLevel, TitleStatus } from '../types/vehicle';
+import type { VehicleClass, ConditionLevel, TitleStatus, ModificationLevel } from '../types/vehicle';
 
 type CostComponent = keyof CostEstimateFactors;
 
-interface FactorAnchor {
-  at: number;
+interface ComponentMultipliers {
   routine: number;
   expectedRepairs: number;
   majorRepairReserve: number;
@@ -16,9 +15,8 @@ interface EstimateInput {
   vehicleAge: number;
   condition: ConditionLevel;
   titleStatus: TitleStatus;
+  modificationLevel: ModificationLevel;
   ownershipYears: number;
-  make?: string;
-  model?: string;
 }
 
 interface EstimateResult {
@@ -72,49 +70,27 @@ const MAJOR_RESERVE_BY_CLASS: Record<VehicleClass, number> = {
   van: 85,
 };
 
-const MILEAGE_FACTOR_ANCHORS: FactorAnchor[] = [
-  { at: 0, routine: 1.00, expectedRepairs: 1.00, majorRepairReserve: 1.00 },
-  { at: 80000, routine: 1.00, expectedRepairs: 1.00, majorRepairReserve: 1.00 },
-  { at: 120000, routine: 1.08, expectedRepairs: 1.12, majorRepairReserve: 1.10 },
-  { at: 160000, routine: 1.18, expectedRepairs: 1.30, majorRepairReserve: 1.25 },
-  { at: 220000, routine: 1.25, expectedRepairs: 1.40, majorRepairReserve: 1.35 },
-];
-
-const AGE_FACTOR_ANCHORS: FactorAnchor[] = [
-  { at: 0, routine: 0.90, expectedRepairs: 0.75, majorRepairReserve: 0.75 },
-  { at: 5, routine: 0.95, expectedRepairs: 0.85, majorRepairReserve: 0.85 },
-  { at: 10, routine: 1.00, expectedRepairs: 0.95, majorRepairReserve: 0.95 },
-  { at: 15, routine: 1.08, expectedRepairs: 1.12, majorRepairReserve: 1.12 },
-  { at: 20, routine: 1.15, expectedRepairs: 1.25, majorRepairReserve: 1.25 },
-  { at: 25, routine: 1.20, expectedRepairs: 1.35, majorRepairReserve: 1.35 },
-];
-
-const CONDITION_MULTIPLIERS: Record<ConditionLevel, FactorAnchor> = {
-  excellent: { at: 0, routine: 0.95, expectedRepairs: 0.90, majorRepairReserve: 0.90 },
-  average: { at: 0, routine: 1.00, expectedRepairs: 1.00, majorRepairReserve: 1.00 },
-  mild_mods: { at: 0, routine: 1.06, expectedRepairs: 1.12, majorRepairReserve: 1.12 },
-  poor: { at: 0, routine: 1.15, expectedRepairs: 1.25, majorRepairReserve: 1.25 },
+const CONDITION_MULTIPLIERS: Record<ConditionLevel, ComponentMultipliers> = {
+  excellent: { routine: 0.95, expectedRepairs: 0.90, majorRepairReserve: 0.90 },
+  average: { routine: 1.00, expectedRepairs: 1.00, majorRepairReserve: 1.00 },
+  mild_mods: { routine: 1.06, expectedRepairs: 1.12, majorRepairReserve: 1.12 },
+  poor: { routine: 1.15, expectedRepairs: 1.25, majorRepairReserve: 1.25 },
 };
 
-const TITLE_MULTIPLIERS: Record<TitleStatus, FactorAnchor> = {
-  clean: { at: 0, routine: 1.00, expectedRepairs: 1.00, majorRepairReserve: 1.00 },
-  unknown: { at: 0, routine: 1.00, expectedRepairs: 1.00, majorRepairReserve: 1.00 },
-  rebuilt: { at: 0, routine: 1.00, expectedRepairs: 1.08, majorRepairReserve: 1.10 },
-  salvage: { at: 0, routine: 1.00, expectedRepairs: 1.15, majorRepairReserve: 1.18 },
-  lemon: { at: 0, routine: 1.00, expectedRepairs: 1.15, majorRepairReserve: 1.18 },
+const TITLE_MULTIPLIERS: Record<TitleStatus, ComponentMultipliers> = {
+  clean: { routine: 1.00, expectedRepairs: 1.00, majorRepairReserve: 1.00 },
+  unknown: { routine: 1.00, expectedRepairs: 1.00, majorRepairReserve: 1.00 },
+  rebuilt: { routine: 1.00, expectedRepairs: 1.08, majorRepairReserve: 1.10 },
+  salvage: { routine: 1.00, expectedRepairs: 1.15, majorRepairReserve: 1.18 },
+  lemon: { routine: 1.00, expectedRepairs: 1.15, majorRepairReserve: 1.18 },
 };
 
-const EUROPEAN_LUXURY_MAKES = new Set([
-  'audi',
-  'bmw',
-  'jaguar',
-  'land rover',
-  'mercedes-benz',
-  'mercedes',
-  'mini',
-  'porsche',
-  'volvo',
-]);
+const MODIFICATION_MULTIPLIERS: Record<ModificationLevel, ComponentMultipliers> = {
+  stock: { routine: 1.00, expectedRepairs: 1.00, majorRepairReserve: 1.00 },
+  low: { routine: 1.00, expectedRepairs: 1.00, majorRepairReserve: 1.00 },
+  medium: { routine: 1.00, expectedRepairs: 1.05, majorRepairReserve: 1.08 },
+  high: { routine: 1.00, expectedRepairs: 1.12, majorRepairReserve: 1.18 },
+};
 
 const STACK_LIMITS: Record<CostComponent, { min: number; max: number; dampening: number }> = {
   routine: { min: 0.85, max: 1.30, dampening: 0.75 },
@@ -148,15 +124,13 @@ export function estimateRoutineMonthly(
   vehicleClass: VehicleClass,
   mileage: number,
   vehicleAge = 10,
-  make?: string,
-  model?: string,
+  modificationLevel: ModificationLevel = 'stock',
 ): number {
   return estimateMaintenanceCostDetails({
     vehicleClass,
     mileage,
     vehicleAge,
-    make,
-    model,
+    modificationLevel,
     condition: 'average',
     titleStatus: 'clean',
     ownershipYears: 5,
@@ -168,18 +142,16 @@ export function estimateExpectedRepairsMonthly(
   vehicleAge: number,
   condition: ConditionLevel,
   mileage = 100000,
-  make?: string,
-  model?: string,
   titleStatus: TitleStatus = 'clean',
+  modificationLevel: ModificationLevel = 'stock',
 ): number {
   return estimateMaintenanceCostDetails({
     vehicleClass,
     vehicleAge,
     condition,
     mileage,
-    make,
-    model,
     titleStatus,
+    modificationLevel,
     ownershipYears: 5,
   }).expectedRepairsMonthly;
 }
@@ -189,51 +161,51 @@ export function estimateMajorRepairReserveMonthly(
   vehicleAge: number,
   ownershipYears: number,
   mileage = 100000,
-  make?: string,
-  model?: string,
   titleStatus: TitleStatus = 'clean',
   condition: ConditionLevel = 'average',
+  modificationLevel: ModificationLevel = 'stock',
 ): number {
   return estimateMaintenanceCostDetails({
     vehicleClass,
     vehicleAge,
     ownershipYears,
     mileage,
-    make,
-    model,
     titleStatus,
     condition,
+    modificationLevel,
   }).majorRepairReserveMonthly;
 }
 
 function buildFactors(input: EstimateInput): CostEstimateFactors {
-  const mileageFactors = factorForAnchors(input.mileage, MILEAGE_FACTOR_ANCHORS, mileageLabel(input.mileage));
-  const ageFactors = factorForAnchors(input.vehicleAge, AGE_FACTOR_ANCHORS, ageLabel(input.vehicleAge));
-  const platformFactors = platformAdjustment(input.make, input.model, input.vehicleClass, input.mileage);
+  const mileageFactors = smoothMileageFactors(input.mileage);
+  const ageFactors = smoothAgeFactors(input.vehicleAge);
   const conditionFactors = namedFactors(CONDITION_MULTIPLIERS[input.condition] ?? CONDITION_MULTIPLIERS.average, `Condition: ${input.condition}`);
   const titleFactors = namedFactors(TITLE_MULTIPLIERS[input.titleStatus] ?? TITLE_MULTIPLIERS.unknown, `Title: ${input.titleStatus}`);
+  const modificationFactors = namedFactors(
+    MODIFICATION_MULTIPLIERS[input.modificationLevel] ?? MODIFICATION_MULTIPLIERS.stock,
+    `Modification: ${modificationLabel(input.modificationLevel)}`,
+  );
   const horizonFactors = namedFactors(horizonAdjustment(input.ownershipYears), `Ownership horizon: ${input.ownershipYears} yr`);
 
   return {
     routine: [
       mileageFactors.routine,
       ageFactors.routine,
-      platformFactors.routine,
       conditionFactors.routine,
     ],
     expectedRepairs: [
       mileageFactors.expectedRepairs,
       ageFactors.expectedRepairs,
-      platformFactors.expectedRepairs,
       conditionFactors.expectedRepairs,
       titleFactors.expectedRepairs,
+      modificationFactors.expectedRepairs,
     ],
     majorRepairReserve: [
       mileageFactors.majorRepairReserve,
       ageFactors.majorRepairReserve,
-      platformFactors.majorRepairReserve,
       conditionFactors.majorRepairReserve,
       titleFactors.majorRepairReserve,
+      modificationFactors.majorRepairReserve,
       horizonFactors.majorRepairReserve,
     ],
   };
@@ -275,32 +247,25 @@ function conservativeStack(
   };
 }
 
-function factorForAnchors(value: number, anchors: FactorAnchor[], label: string): Record<CostComponent, CostEstimateFactor> {
-  const interpolated = interpolateAnchors(value, anchors);
-  return namedFactors(interpolated, label);
+function smoothMileageFactors(mileage: number): Record<CostComponent, CostEstimateFactor> {
+  const load = clamp((mileage - 80000) / 120000, 0, 1);
+  return namedFactors({
+    routine: 1 + 0.10 * load,
+    expectedRepairs: 1 + 0.25 * load,
+    majorRepairReserve: 1 + 0.40 * load,
+  }, mileageLabel(mileage));
 }
 
-function interpolateAnchors(value: number, anchors: FactorAnchor[]): FactorAnchor {
-  if (value <= anchors[0].at) return anchors[0];
-
-  for (let i = 1; i < anchors.length; i += 1) {
-    const previous = anchors[i - 1];
-    const next = anchors[i];
-    if (value <= next.at) {
-      const progress = (value - previous.at) / (next.at - previous.at);
-      return {
-        at: value,
-        routine: interpolate(previous.routine, next.routine, progress),
-        expectedRepairs: interpolate(previous.expectedRepairs, next.expectedRepairs, progress),
-        majorRepairReserve: interpolate(previous.majorRepairReserve, next.majorRepairReserve, progress),
-      };
-    }
-  }
-
-  return anchors[anchors.length - 1];
+function smoothAgeFactors(age: number): Record<CostComponent, CostEstimateFactor> {
+  const load = clamp((age - 5) / 20, -0.2, 1);
+  return namedFactors({
+    routine: 1 + 0.08 * load,
+    expectedRepairs: 1 + 0.20 * load,
+    majorRepairReserve: 1 + 0.30 * load,
+  }, ageLabel(age));
 }
 
-function namedFactors(anchor: FactorAnchor, label: string): Record<CostComponent, CostEstimateFactor> {
+function namedFactors(anchor: ComponentMultipliers, label: string): Record<CostComponent, CostEstimateFactor> {
   return {
     routine: { label, multiplier: anchor.routine },
     expectedRepairs: { label, multiplier: anchor.expectedRepairs },
@@ -308,112 +273,19 @@ function namedFactors(anchor: FactorAnchor, label: string): Record<CostComponent
   };
 }
 
-function platformAdjustment(
-  make = '',
-  model = '',
-  vehicleClass: VehicleClass,
-  mileage: number,
-): Record<CostComponent, CostEstimateFactor> {
-  const normalizedMake = make.trim().toLowerCase();
-  const normalizedModel = model.trim().toLowerCase();
-  const defaultAdjustment = namedFactors(
-    { at: 0, routine: 1.00, expectedRepairs: 1.00, majorRepairReserve: 1.00 },
-    'Platform: neutral',
-  );
-
-  if (!normalizedMake && !normalizedModel) return defaultAdjustment;
-
-  if (normalizedMake === 'toyota' || normalizedMake === 'honda') {
-    const truckish = vehicleClass === 'body_on_frame_suv'
-      || vehicleClass === 'compact_truck'
-      || vehicleClass === 'fullsize_truck'
-      || normalizedModel.includes('4runner')
-      || normalizedModel.includes('tacoma');
-
-    return namedFactors(
-      {
-        at: 0,
-        routine: truckish ? 1.02 : 0.98,
-        expectedRepairs: 0.92,
-        majorRepairReserve: truckish ? 0.90 : 0.92,
-      },
-      truckish ? `${displayMake(make)} truck/SUV reliability adjustment` : `${displayMake(make)} reliability adjustment`,
-    );
-  }
-
-  if (normalizedMake === 'subaru') {
-    const highMileage = mileage >= 120000;
-    return namedFactors(
-      {
-        at: 0,
-        routine: highMileage ? 1.02 : 1.00,
-        expectedRepairs: highMileage ? 1.06 : 1.03,
-        majorRepairReserve: highMileage ? 1.06 : 1.03,
-      },
-      highMileage ? 'Subaru high-mileage adjustment' : 'Subaru adjustment',
-    );
-  }
-
-  if (normalizedMake === 'jeep') {
-    const highMileage = mileage >= 120000;
-    return namedFactors(
-      {
-        at: 0,
-        routine: 1.03,
-        expectedRepairs: highMileage ? 1.14 : 1.08,
-        majorRepairReserve: highMileage ? 1.16 : 1.10,
-      },
-      highMileage ? 'Jeep high-mileage adjustment' : 'Jeep adjustment',
-    );
-  }
-
-  if (EUROPEAN_LUXURY_MAKES.has(normalizedMake)) {
-    return namedFactors(
-      { at: 0, routine: 1.08, expectedRepairs: 1.16, majorRepairReserve: 1.18 },
-      `${displayMake(make)} luxury/European adjustment`,
-    );
-  }
-
-  if (
-    vehicleClass === 'body_on_frame_suv'
-    || vehicleClass === 'compact_truck'
-    || vehicleClass === 'fullsize_truck'
-    || normalizedModel.includes('4runner')
-    || normalizedModel.includes('tacoma')
-  ) {
-    return namedFactors(
-      { at: 0, routine: 1.04, expectedRepairs: 0.98, majorRepairReserve: 0.98 },
-      'Truck/SUV platform adjustment',
-    );
-  }
-
-  return defaultAdjustment;
-}
-
-function horizonAdjustment(ownershipYears: number): FactorAnchor {
+function horizonAdjustment(ownershipYears: number): ComponentMultipliers {
   // Longer horizons spread lumpy risk more evenly; short horizons need a small buffer.
-  if (ownershipYears <= 2) return { at: 0, routine: 1.00, expectedRepairs: 1.00, majorRepairReserve: 1.06 };
-  if (ownershipYears <= 5) return { at: 0, routine: 1.00, expectedRepairs: 1.00, majorRepairReserve: 1.00 };
-  return { at: 0, routine: 1.00, expectedRepairs: 1.00, majorRepairReserve: 0.97 };
+  if (ownershipYears <= 2) return { routine: 1.00, expectedRepairs: 1.00, majorRepairReserve: 1.06 };
+  if (ownershipYears <= 5) return { routine: 1.00, expectedRepairs: 1.00, majorRepairReserve: 1.00 };
+  return { routine: 1.00, expectedRepairs: 1.00, majorRepairReserve: 0.97 };
 }
 
 function mileageLabel(mileage: number): string {
-  if (mileage < 80000) return 'Mileage: under 80k baseline';
-  if (mileage <= 120000) return 'Mileage: 80k-120k mild increase';
-  if (mileage <= 160000) return 'Mileage: 120k-160k meaningful increase';
-  return 'Mileage: 160k+ high-mileage exposure';
+  return `Mileage: ${Math.round(mileage / 1000)}k mi smooth factor`;
 }
 
 function ageLabel(age: number): string {
-  if (age <= 5) return 'Age: 0-5 years';
-  if (age <= 10) return 'Age: 6-10 years';
-  if (age <= 15) return 'Age: 11-15 years';
-  if (age <= 20) return 'Age: 16-20 years';
-  return 'Age: 20+ years';
-}
-
-function interpolate(from: number, to: number, progress: number): number {
-  return from + (to - from) * progress;
+  return `Age: ${age} yr smooth factor`;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -424,7 +296,12 @@ function roundToFive(value: number): number {
   return Math.round(value / 5) * 5;
 }
 
-function displayMake(make: string): string {
-  const trimmed = make.trim();
-  return trimmed || 'Known make';
+function modificationLabel(level: ModificationLevel): string {
+  const labels: Record<ModificationLevel, string> = {
+    stock: 'stock',
+    low: 'low',
+    medium: 'medium',
+    high: 'high',
+  };
+  return labels[level] ?? labels.stock;
 }

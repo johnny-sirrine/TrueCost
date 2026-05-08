@@ -23,7 +23,7 @@ function csvRow(cells: unknown[]): string {
 export function vehiclesToCsv(computed: ComputedVehicle[]): string {
   const headers = [
     'Year', 'Make', 'Model', 'Trim',
-    'Listing Price', 'Mileage', 'Title Status', 'Condition',
+    'Listing Price', 'Mileage', 'Title Status', 'Condition', 'Modification Level',
     'Drivetrain', 'Transmission', 'Engine', 'EPA MPG',
     'Realistic MPG',
     'Fuel $/mo', 'Routine $/mo', 'Expected Repairs $/mo', 'Insurance $/mo',
@@ -46,6 +46,7 @@ export function vehiclesToCsv(computed: ComputedVehicle[]): string {
     vehicle.user.mileage,
     vehicle.user.titleStatus,
     vehicle.user.conditionLevel,
+    vehicle.user.modificationLevel ?? 'stock',
     vehicle.canonical.drivetrain ?? '',
     vehicle.canonical.transmissionType ?? '',
     vehicle.canonical.engineType ?? '',

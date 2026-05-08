@@ -14,6 +14,8 @@ export type TitleStatus = 'clean' | 'salvage' | 'rebuilt' | 'lemon' | 'unknown';
 
 export type ConditionLevel = 'excellent' | 'average' | 'mild_mods' | 'poor';
 
+export type ModificationLevel = 'stock' | 'low' | 'medium' | 'high';
+
 export type SellerType = 'dealer' | 'private' | 'unknown';
 
 // Vehicle class for MPG factor lookup and maintenance estimation
@@ -98,6 +100,7 @@ export interface VehicleUserData {
   mileage: number;
   titleStatus: TitleStatus;
   conditionLevel: ConditionLevel;
+  modificationLevel: ModificationLevel;
   catchUpCost: number;
   notes: string;
   tags: string[];

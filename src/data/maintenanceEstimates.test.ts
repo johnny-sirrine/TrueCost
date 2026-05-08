@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ConditionLevel, TitleStatus, VehicleClass } from '../types/vehicle';
+import type { ConditionLevel, ModificationLevel, TitleStatus, VehicleClass } from '../types/vehicle';
 import { estimateMaintenanceCostDetails } from './maintenanceEstimates';
 
 function estimate(overrides: Partial<{
@@ -8,9 +8,8 @@ function estimate(overrides: Partial<{
   vehicleAge: number;
   condition: ConditionLevel;
   titleStatus: TitleStatus;
+  modificationLevel: ModificationLevel;
   ownershipYears: number;
-  make: string;
-  model: string;
 }> = {}) {
   return estimateMaintenanceCostDetails({
     vehicleClass: overrides.vehicleClass ?? 'midsize_crossover',
@@ -18,43 +17,41 @@ function estimate(overrides: Partial<{
     vehicleAge: overrides.vehicleAge ?? 10,
     condition: overrides.condition ?? 'average',
     titleStatus: overrides.titleStatus ?? 'clean',
+    modificationLevel: overrides.modificationLevel ?? 'stock',
     ownershipYears: overrides.ownershipYears ?? 5,
-    make: overrides.make,
-    model: overrides.model,
   });
 }
 
+function modificationFactor(
+  result: ReturnType<typeof estimate>,
+  component: 'expectedRepairs' | 'majorRepairReserve',
+) {
+  return result.factors[component].find((factor) => factor.label.startsWith('Modification:'))?.multiplier;
+}
+
 describe('maintenance and repair estimates', () => {
-  it('makes high-mileage Grand Cherokee repair exposure higher without exploding', () => {
+  it('nudges high-mileage repair exposure higher without making mileage overconfident', () => {
     const lowerMileage = estimate({
-      make: 'Jeep',
-      model: 'Grand Cherokee',
-      vehicleAge: 11,
+      vehicleAge: 10,
       mileage: 93000,
     });
     const highMileage = estimate({
-      make: 'Jeep',
-      model: 'Grand Cherokee',
       vehicleAge: 10,
       mileage: 162000,
     });
 
     expect(highMileage.expectedRepairsMonthly).toBeGreaterThan(lowerMileage.expectedRepairsMonthly);
     expect(highMileage.majorRepairReserveMonthly).toBeGreaterThan(lowerMileage.majorRepairReserveMonthly);
-    expect(highMileage.expectedRepairsMonthly / lowerMileage.expectedRepairsMonthly).toBeLessThanOrEqual(1.35);
-    expect(highMileage.majorRepairReserveMonthly / lowerMileage.majorRepairReserveMonthly).toBeLessThanOrEqual(1.35);
+    expect(highMileage.expectedRepairsMonthly / lowerMileage.expectedRepairsMonthly).toBeLessThanOrEqual(1.20);
+    expect(highMileage.majorRepairReserveMonthly / lowerMileage.majorRepairReserveMonthly).toBeLessThanOrEqual(1.25);
   });
 
-  it('smooths the 160k mileage threshold instead of creating a cliff', () => {
+  it('smooths mileage differences instead of creating a cliff near 160k', () => {
     const justUnder = estimate({
-      make: 'Jeep',
-      model: 'Grand Cherokee',
       vehicleAge: 10,
       mileage: 159000,
     });
     const justOver = estimate({
-      make: 'Jeep',
-      model: 'Grand Cherokee',
       vehicleAge: 10,
       mileage: 160100,
     });
@@ -63,49 +60,63 @@ describe('maintenance and repair estimates', () => {
     expect(Math.abs(justOver.majorRepairReserveMonthly - justUnder.majorRepairReserveMonthly)).toBeLessThanOrEqual(5);
   });
 
-  it('keeps unknown make and model neutral rather than pessimistic', () => {
-    const neutral = estimate({ make: '', model: '' });
-    const unknown = estimate({ make: 'Mystery', model: 'Unknown' });
+  it('keeps routine smoothest and major reserve most sensitive to mileage', () => {
+    const lowMileage = estimate({
+      vehicleAge: 10,
+      mileage: 80000,
+    });
+    const highMileage = estimate({
+      vehicleAge: 10,
+      mileage: 200000,
+    });
 
-    expect(unknown.routineMonthly).toBe(neutral.routineMonthly);
-    expect(unknown.expectedRepairsMonthly).toBe(neutral.expectedRepairsMonthly);
-    expect(unknown.majorRepairReserveMonthly).toBe(neutral.majorRepairReserveMonthly);
+    const routineDelta = highMileage.routineMonthly - lowMileage.routineMonthly;
+    const repairsDelta = highMileage.expectedRepairsMonthly - lowMileage.expectedRepairsMonthly;
+    const reserveDelta = highMileage.majorRepairReserveMonthly - lowMileage.majorRepairReserveMonthly;
+
+    expect(routineDelta).toBeGreaterThan(0);
+    expect(repairsDelta).toBeGreaterThanOrEqual(routineDelta);
+    expect(reserveDelta).toBeGreaterThanOrEqual(repairsDelta);
   });
 
-  it('keeps similar Subaru Outback mileages close together', () => {
-    const outback135k = estimate({
-      make: 'Subaru',
-      model: 'Outback',
-      vehicleAge: 8,
-      mileage: 135000,
-    });
-    const outback142k = estimate({
-      make: 'Subaru',
-      model: 'Outback',
-      vehicleAge: 8,
-      mileage: 142000,
-    });
+  it('treats low modification level the same as stock', () => {
+    const stock = estimate({ modificationLevel: 'stock' });
+    const low = estimate({ modificationLevel: 'low' });
 
-    expect(outback142k.expectedRepairsMonthly).toBeGreaterThanOrEqual(outback135k.expectedRepairsMonthly);
-    expect(outback142k.majorRepairReserveMonthly).toBeGreaterThanOrEqual(outback135k.majorRepairReserveMonthly);
-    expect(outback142k.expectedRepairsMonthly - outback135k.expectedRepairsMonthly).toBeLessThanOrEqual(5);
-    expect(outback142k.majorRepairReserveMonthly - outback135k.majorRepairReserveMonthly).toBeLessThanOrEqual(5);
+    expect(low.routineMonthly).toBe(stock.routineMonthly);
+    expect(low.expectedRepairsMonthly).toBe(stock.expectedRepairsMonthly);
+    expect(low.majorRepairReserveMonthly).toBe(stock.majorRepairReserveMonthly);
+    expect(modificationFactor(low, 'expectedRepairs')).toBe(1);
+    expect(modificationFactor(low, 'majorRepairReserve')).toBe(1);
+  });
+
+  it('uses modest modification multipliers for medium and high builds', () => {
+    const medium = estimate({ vehicleClass: 'fullsize_suv', mileage: 162000, modificationLevel: 'medium' });
+    const high = estimate({ vehicleClass: 'fullsize_suv', mileage: 162000, modificationLevel: 'high' });
+
+    expect(modificationFactor(medium, 'expectedRepairs')).toBe(1.05);
+    expect(modificationFactor(medium, 'majorRepairReserve')).toBe(1.08);
+    expect(modificationFactor(high, 'expectedRepairs')).toBe(1.12);
+    expect(modificationFactor(high, 'majorRepairReserve')).toBe(1.18);
+    expect(high.expectedRepairsMonthly).toBeGreaterThanOrEqual(medium.expectedRepairsMonthly);
+    expect(high.majorRepairReserveMonthly).toBeGreaterThan(medium.majorRepairReserveMonthly);
   });
 
   it('returns explainable factor labels including conservative stack dampening', () => {
     const highRisk = estimate({
-      make: 'Jeep',
-      model: 'Grand Cherokee',
-      vehicleAge: 16,
-      mileage: 180000,
+      vehicleAge: 30,
+      mileage: 250000,
       condition: 'poor',
-      titleStatus: 'rebuilt',
+      titleStatus: 'salvage',
+      modificationLevel: 'high',
     });
     const labels = highRisk.factors.expectedRepairs.map((factor) => factor.label);
 
     expect(labels.some((label) => label.startsWith('Mileage:'))).toBe(true);
     expect(labels.some((label) => label.startsWith('Age:'))).toBe(true);
-    expect(labels.some((label) => label.includes('Jeep'))).toBe(true);
+    expect(labels.some((label) => label.startsWith('Condition:'))).toBe(true);
+    expect(labels.some((label) => label.startsWith('Title:'))).toBe(true);
+    expect(labels.some((label) => label.startsWith('Modification:'))).toBe(true);
     expect(labels.some((label) => label.includes('Conservative stack dampening/cap'))).toBe(true);
   });
 });

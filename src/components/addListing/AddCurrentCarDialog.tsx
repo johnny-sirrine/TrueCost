@@ -7,13 +7,20 @@ import { useVehicleLookup } from '../../hooks/useVehicleLookup';
 import { inferDepreciationProfile } from '../../data/vehicleReference';
 import { buildFieldMetaFromLookup } from '../../services/vehicleResolver';
 import { DerivedInfoPreview } from './DerivedInfoPreview';
-import type { VehicleRow, TitleStatus, Drivetrain, TransmissionType, ConditionLevel } from '../../types';
+import type { VehicleRow, TitleStatus, Drivetrain, TransmissionType, ConditionLevel, ModificationLevel } from '../../types';
 
 const CONDITION_OPTIONS: { value: ConditionLevel; label: string }[] = [
   { value: 'excellent', label: 'Excellent' },
   { value: 'average', label: 'Average' },
   { value: 'mild_mods', label: 'Mild mods / wear' },
   { value: 'poor', label: 'Poor / heavy mods' },
+];
+
+const MODIFICATION_OPTIONS: { value: ModificationLevel; label: string }[] = [
+  { value: 'stock', label: 'Stock' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
 ];
 
 export function AddCurrentCarDialog() {
@@ -30,6 +37,7 @@ export function AddCurrentCarDialog() {
   const [titleStatus, setTitleStatus] = useState<TitleStatus>('clean');
   const [transmission, setTransmission] = useState<TransmissionType>('automatic');
   const [condition, setCondition] = useState<ConditionLevel>('average');
+  const [modificationLevel, setModificationLevel] = useState<ModificationLevel>('stock');
 
   const lookup = useVehicleLookup(year, make, model, { trim, drivetrain, transmission });
 
@@ -87,6 +95,7 @@ export function AddCurrentCarDialog() {
         mileage,
         titleStatus,
         conditionLevel: condition,
+        modificationLevel,
         catchUpCost: 0,
         notes: '',
         tags: [],
@@ -127,6 +136,7 @@ export function AddCurrentCarDialog() {
     setTitleStatus('clean');
     setTransmission('automatic');
     setCondition('average');
+    setModificationLevel('stock');
   };
 
   return (
@@ -188,7 +198,7 @@ export function AddCurrentCarDialog() {
             </Field>
           </div>
 
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-5 gap-3">
             <Field label="Drivetrain">
               <select value={drivetrain} onChange={(e) => setDrivetrain(e.target.value as Drivetrain)} className="form-input">
                 <option value="awd">AWD</option>
@@ -219,9 +229,16 @@ export function AddCurrentCarDialog() {
                 ))}
               </select>
             </Field>
+            <Field label="Mod Level">
+              <select value={modificationLevel} onChange={(e) => setModificationLevel(e.target.value as ModificationLevel)} className="form-input">
+                {MODIFICATION_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </Field>
           </div>
           <p className="text-xs text-slate-400 -mt-1">
-            Condition is relative to what's normal for the vehicle's age and mileage — "excellent" on a 15-year-old car means well-maintained for its age, not like new.
+            Condition is relative to what's normal for the vehicle's age and mileage. Mod level captures lift, tires, suspension, drivetrain, or overland changes.
           </p>
         </div>
 

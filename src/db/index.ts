@@ -74,6 +74,19 @@ class CarBoardDB extends Dexie {
       vehicles: 'id, createdAt, updatedAt',
       assumptions: 'id',
     });
+
+    // Version 7: explicit modification level for repair/reserve modeling.
+    // Existing rows are treated as stock so old data remains valid.
+    this.version(7).stores({
+      vehicles: 'id, createdAt, updatedAt',
+      assumptions: 'id',
+    }).upgrade(tx => {
+      return tx.table('vehicles').toCollection().modify(v => {
+        if (v.user && v.user.modificationLevel === undefined) {
+          v.user.modificationLevel = 'stock';
+        }
+      });
+    });
   }
 }
 

@@ -29,6 +29,7 @@ describe('vehiclesToCsv', () => {
           mileage: 130777,
           titleStatus: 'clean',
           conditionLevel: 'average',
+          modificationLevel: 'stock',
           catchUpCost: 0,
           notes: '',
           tags: [],
@@ -59,6 +60,8 @@ describe('vehiclesToCsv', () => {
 
     const csv = vehiclesToCsv(computed);
     expect(csv.split('\n')[0]).toContain('Location');
+    expect(csv.split('\n')[0]).toContain('Modification Level');
+    expect(csv).toContain('stock');
     expect(csv).toContain('"Provo, UT"');
   });
 });

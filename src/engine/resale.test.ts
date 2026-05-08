@@ -157,6 +157,7 @@ describe('resale gain/loss with sales tax', () => {
       mileage: overrides.mileage ?? 162900,
       titleStatus: overrides.titleStatus ?? 'clean',
       conditionLevel: 'average',
+      modificationLevel: 'stock',
       catchUpCost: 0,
       notes: '',
       tags: [],
