@@ -10,6 +10,17 @@ export interface MpgFactors {
   usage: number;
 }
 
+export interface CostEstimateFactor {
+  label: string;
+  multiplier: number;
+}
+
+export interface CostEstimateFactors {
+  routine: CostEstimateFactor[];
+  expectedRepairs: CostEstimateFactor[];
+  majorRepairReserve: CostEstimateFactor[];
+}
+
 export interface ComputedEvaluation {
   // MPG
   realisticMpg: number;
@@ -25,6 +36,7 @@ export interface ComputedEvaluation {
   insuranceMonthly: number;
   baselineMonthly: number;  // fuel + routine + expectedRepairs
   allInMonthly: number;     // baseline + insurance + reserve
+  costFactors?: CostEstimateFactors;
 
   // Aggregated
   firstYearCost: number;

@@ -188,6 +188,29 @@ export const boardColumns = [
     },
   }),
 
+  col.accessor((r) => r.vehicle.listing.location, {
+    id: 'location',
+    header: () => <Hdr label="Location" tip={H.location} />,
+    size: 140,
+    minSize: 120,
+    maxSize: 280,
+    enableResizing: true,
+    cell: ({ row, getValue, table }) => {
+      const location = getValue();
+      const meta = table.options.meta as BoardTableMeta;
+      if (row.original.vehicle.user.isCurrentCar) {
+        return <span className="text-xs text-slate-400">{location ?? '—'}</span>;
+      }
+      return (
+        <InlineEditableCell
+          value={location ?? ''}
+          placeholder="Add location"
+          onSave={(nextValue) => meta.onLocationChange(row.original.vehicle.id, nextValue)}
+        />
+      );
+    },
+  }),
+
   col.accessor(
     (r) => `${r.vehicle.canonical.year} ${r.vehicle.canonical.make} ${r.vehicle.canonical.model}`,
     {
@@ -224,29 +247,6 @@ export const boardColumns = [
     },
   ),
 
-  col.accessor((r) => r.vehicle.listing.location, {
-    id: 'location',
-    header: () => <Hdr label="Location" tip={H.location} />,
-    size: 140,
-    minSize: 120,
-    maxSize: 280,
-    enableResizing: true,
-    cell: ({ row, getValue, table }) => {
-      const location = getValue();
-      const meta = table.options.meta as BoardTableMeta;
-      if (row.original.vehicle.user.isCurrentCar) {
-        return <span className="text-xs text-slate-400">{location ?? '—'}</span>;
-      }
-      return (
-        <InlineEditableCell
-          value={location ?? ''}
-          placeholder="Add location"
-          onSave={(nextValue) => meta.onLocationChange(row.original.vehicle.id, nextValue)}
-        />
-      );
-    },
-  }),
-
   col.accessor((r) => r.vehicle.user.userRating ?? 0, {
     id: 'rating',
     header: () => <Hdr label="My Rating" tip={H.rating} />,
@@ -280,6 +280,28 @@ export const boardColumns = [
         <CellTooltip content={tip}>
           <span className="font-medium tabular-nums">{fc(price)}</span>
         </CellTooltip>
+      );
+    },
+  }),
+
+  col.accessor((r) => r.vehicle.user.notes, {
+    id: 'notes',
+    header: () => <Hdr label="Notes" tip={H.notes} />,
+    size: 220,
+    minSize: 180,
+    maxSize: 480,
+    enableResizing: true,
+    cell: ({ row, getValue, table }) => {
+      const meta = table.options.meta as BoardTableMeta;
+      const notes = getValue() ?? '';
+      return (
+        <InlineEditableCell
+          value={notes}
+          placeholder="Add notes"
+          multiline
+          maxDisplayLines={4}
+          onSave={(nextValue) => meta.onNotesChange(row.original.vehicle.id, nextValue)}
+        />
       );
     },
   }),
@@ -527,28 +549,6 @@ export const boardColumns = [
             {quality}
           </span>
         </CellTooltip>
-      );
-    },
-  }),
-
-  col.accessor((r) => r.vehicle.user.notes, {
-    id: 'notes',
-    header: () => <Hdr label="Notes" tip={H.notes} />,
-    size: 220,
-    minSize: 180,
-    maxSize: 480,
-    enableResizing: true,
-    cell: ({ row, getValue, table }) => {
-      const meta = table.options.meta as BoardTableMeta;
-      const notes = getValue() ?? '';
-      return (
-        <InlineEditableCell
-          value={notes}
-          placeholder="Add notes"
-          multiline
-          maxDisplayLines={4}
-          onSave={(nextValue) => meta.onNotesChange(row.original.vehicle.id, nextValue)}
-        />
       );
     },
   }),

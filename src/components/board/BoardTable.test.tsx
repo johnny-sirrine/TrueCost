@@ -180,6 +180,36 @@ describe('BoardTable', () => {
     expect(screen.queryByTestId('resize-price')).toBeNull();
   });
 
+  it('keeps location as column 2 and notes as column 6 in the visible board columns', () => {
+    const data = [
+      makeComputedVehicle({ id: 'candidate', isCurrentCar: false, location: 'Salt Lake City, UT', notes: 'Candidate note' }),
+    ];
+
+    render(
+      <BoardTable
+        data={data}
+        columnVisibility={DEFAULT_VISIBILITY}
+        onColumnVisibilityChange={() => {}}
+        showSellScenario={false}
+      />,
+    );
+
+    const visibleHeaders = screen
+      .getAllByRole('columnheader')
+      .map((header) => header.textContent?.trim())
+      .filter(Boolean);
+
+    expect(visibleHeaders.slice(0, 7)).toEqual([
+      'Source',
+      'Location',
+      'Vehicle',
+      'My Rating',
+      'Price',
+      'Notes',
+      'Miles',
+    ]);
+  });
+
   it('saves candidate location edits inline but keeps current-car location non-editable', async () => {
     const user = userEvent.setup();
     const current = makeComputedVehicle({ id: 'current', isCurrentCar: true, location: 'Denver, CO', notes: 'Current note' });

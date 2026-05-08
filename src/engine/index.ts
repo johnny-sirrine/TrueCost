@@ -48,6 +48,7 @@ export function computeEvaluation(
     insuranceMonthly: insurance.insuranceMonthly,
     baselineMonthly: costs.baselineMonthly,
     allInMonthly: costs.allInMonthly,
+    costFactors: costs.costFactors,
     firstYearCost: costs.firstYearCost,
     totalCostAtHorizon,
     currentMarketValueEstimate: resale.currentMarketValueEstimate,

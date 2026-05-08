@@ -28,7 +28,7 @@ interface BoardTableProps {
 
 const SELL_ZERO_COLUMNS = new Set(['insurance', 'baseline', 'allIn', 'fuel', 'routine', 'repairs', 'reserve']);
 const SELL_PROCEEDS_COLUMNS = new Set(['firstYear', 'totalCost']);
-const STICKY_COLUMN_IDS = ['pin', 'source', 'vehicle'] as const;
+const STICKY_COLUMN_IDS = ['pin', 'source', 'location', 'vehicle'] as const;
 
 function rowBgClass(isCurrentCar: boolean, isPinned: boolean): string {
   if (isCurrentCar) return 'bg-emerald-50';
