@@ -6,6 +6,7 @@ import type { GlobalAssumptions } from '../../types';
 import { formatCurrency, formatMiles, formatMpg } from '../../lib/formatters';
 import { DEAL_QUALITY_COLORS, LISTING_SOURCE_LABELS } from '../../lib/constants';
 import { CellTooltip } from './CellTooltip';
+import { InlineEditableCell } from './InlineEditableCell';
 
 const col = createColumnHelper<ComputedVehicle>();
 
@@ -13,6 +14,8 @@ export interface BoardTableMeta {
   openDetailDrawer: (vehicleId: string) => void;
   assumptions: GlobalAssumptions;
   onRatingChange: (vehicleId: string, rating: number | undefined) => void;
+  onLocationChange: (vehicleId: string, location: string) => Promise<void> | void;
+  onNotesChange: (vehicleId: string, notes: string) => Promise<void> | void;
   onDeleteVehicle: (vehicleId: string) => void;
   onTogglePin: (vehicleId: string, currentPinned: boolean) => void;
 }
@@ -94,6 +97,8 @@ const fc = formatCurrency;
 const H: Record<string, string> = {
   source: 'Where the listing was found. Click to visit original listing.',
   vehicle: 'Year, make, model, trim. Click to open full details.',
+  location: 'Listing location from the source when available. Blank means it was not provided.',
+  notes: 'Your notes for this vehicle. Wraps in the table, shows up to 4 lines, and can be edited inline.',
   rating: 'Your personal rating. Click a star to rate, click again to clear.',
   price: 'Seller\'s asking price before tax.',
   salesTax: 'Sales tax on purchase price, based on your configured rate.',
@@ -189,9 +194,12 @@ export const boardColumns = [
       id: 'vehicle',
       header: () => <Hdr label="Vehicle" tip={H.vehicle} />,
       size: 220,
+      minSize: 180,
+      maxSize: 420,
+      enableResizing: true,
       cell: ({ row, table }) => {
         const { year, make, model, trim } = row.original.vehicle.canonical;
-        const { titleStatus, isCurrentCar } = row.original.vehicle.user;
+        const { titleStatus } = row.original.vehicle.user;
         const meta = table.options.meta as BoardTableMeta;
         return (
           <div
@@ -215,6 +223,29 @@ export const boardColumns = [
       },
     },
   ),
+
+  col.accessor((r) => r.vehicle.listing.location, {
+    id: 'location',
+    header: () => <Hdr label="Location" tip={H.location} />,
+    size: 140,
+    minSize: 120,
+    maxSize: 280,
+    enableResizing: true,
+    cell: ({ row, getValue, table }) => {
+      const location = getValue();
+      const meta = table.options.meta as BoardTableMeta;
+      if (row.original.vehicle.user.isCurrentCar) {
+        return <span className="text-xs text-slate-400">{location ?? '—'}</span>;
+      }
+      return (
+        <InlineEditableCell
+          value={location ?? ''}
+          placeholder="Add location"
+          onSave={(nextValue) => meta.onLocationChange(row.original.vehicle.id, nextValue)}
+        />
+      );
+    },
+  }),
 
   col.accessor((r) => r.vehicle.user.userRating ?? 0, {
     id: 'rating',
@@ -496,6 +527,28 @@ export const boardColumns = [
             {quality}
           </span>
         </CellTooltip>
+      );
+    },
+  }),
+
+  col.accessor((r) => r.vehicle.user.notes, {
+    id: 'notes',
+    header: () => <Hdr label="Notes" tip={H.notes} />,
+    size: 220,
+    minSize: 180,
+    maxSize: 480,
+    enableResizing: true,
+    cell: ({ row, getValue, table }) => {
+      const meta = table.options.meta as BoardTableMeta;
+      const notes = getValue() ?? '';
+      return (
+        <InlineEditableCell
+          value={notes}
+          placeholder="Add notes"
+          multiline
+          maxDisplayLines={4}
+          onSave={(nextValue) => meta.onNotesChange(row.original.vehicle.id, nextValue)}
+        />
       );
     },
   }),

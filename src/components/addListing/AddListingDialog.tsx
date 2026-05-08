@@ -41,6 +41,7 @@ export function AddListingDialog() {
   const [titleStatus, setTitleStatus] = useState<TitleStatus>('clean');
   const [transmission, setTransmission] = useState<TransmissionType>('automatic');
   const [sourceUrl, setSourceUrl] = useState('');
+  const [location, setLocation] = useState('');
   const [condition, setCondition] = useState<ConditionLevel>('average');
 
   // VIN decode state. `vin` holds the user input; `vinStatus` tracks the
@@ -75,6 +76,7 @@ export function AddListingDialog() {
     setTitleStatus('clean');
     setTransmission('automatic');
     setSourceUrl('');
+    setLocation('');
     setCondition('average');
     setVin('');
     setVinStatus('idle');
@@ -119,6 +121,7 @@ export function AddListingDialog() {
     setTitleStatus('clean');
     setTransmission('automatic');
     setCondition('average');
+    setLocation('');
     setVin('');
     setVinStatus('idle');
     setVinMessage(null);
@@ -185,6 +188,7 @@ export function AddListingDialog() {
       setTitleStatus(result.suggestedTitleStatus);
     }
     if (result.listing.sourceUrl && !existingSourceUrl) setSourceUrl(result.listing.sourceUrl);
+    if (result.listing.location) setLocation(result.listing.location);
   };
 
   /** Decode the entered VIN and pre-fill empty form fields. We deliberately
@@ -272,6 +276,9 @@ export function AddListingDialog() {
       ['year', 'make', 'model', 'listingPrice', 'mileage'].forEach((f) => {
         fieldMeta[f] = { origin: 'extracted', confidence: 'high' };
       });
+      if (location.trim()) {
+        fieldMeta.location = { origin: 'extracted', confidence: 'high' };
+      }
     }
 
     // VIN-decoded fields take precedence over the 'extracted' tag above,
@@ -312,6 +319,7 @@ export function AddListingDialog() {
         rawPrice: price,
         rawMileage: mileage,
         sellerType: 'unknown',
+        location: location.trim() || parseResult?.listing.location || undefined,
         titleStatusRaw: titleStatus,
         vin: vinValidation?.valid ? vinValidation.normalized : undefined,
       },
@@ -607,19 +615,30 @@ export function AddListingDialog() {
                 Condition is relative to what's typical for the vehicle's age and mileage — "excellent" means well-maintained for its age, not like new.
               </p>
 
-              <FormField label="Source URL (optional)">
-                <OptionalSourceUrlField
-                  value={sourceUrl}
-                  onChange={(value) => {
-                    setSourceUrl(value);
-                    if (tab === 'text') setShowTextSourceUrlWarning(false);
-                  }}
-                  onBlur={() => {
-                    if (tab === 'text') setShowTextSourceUrlWarning(true);
-                  }}
-                  warningLines={tab === 'text' ? textSourceUrlWarnings : []}
-                />
-              </FormField>
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Location (optional)">
+                  <input
+                    type="text"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    className="form-input"
+                    placeholder="Salt Lake City, UT"
+                  />
+                </FormField>
+                <FormField label="Source URL (optional)">
+                  <OptionalSourceUrlField
+                    value={sourceUrl}
+                    onChange={(value) => {
+                      setSourceUrl(value);
+                      if (tab === 'text') setShowTextSourceUrlWarning(false);
+                    }}
+                    onBlur={() => {
+                      if (tab === 'text') setShowTextSourceUrlWarning(true);
+                    }}
+                    warningLines={tab === 'text' ? textSourceUrlWarnings : []}
+                  />
+                </FormField>
+              </div>
             </div>
           )}
         </div>

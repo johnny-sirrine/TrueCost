@@ -167,6 +167,88 @@ function parseMileage(text: string): number | undefined {
     : Math.round(numeric);
 }
 
+const US_STATE_ABBREVIATIONS = [
+  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DC', 'DE', 'FL', 'GA',
+  'HI', 'IA', 'ID', 'IL', 'IN', 'KS', 'KY', 'LA', 'MA', 'MD', 'ME',
+  'MI', 'MN', 'MO', 'MS', 'MT', 'NC', 'ND', 'NE', 'NH', 'NJ', 'NM',
+  'NV', 'NY', 'OH', 'OK', 'OR', 'PA', 'RI', 'SC', 'SD', 'TN', 'TX',
+  'UT', 'VA', 'VT', 'WA', 'WI', 'WV', 'WY',
+] as const;
+
+const US_STATE_NAMES = [
+  'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado',
+  'Connecticut', 'Delaware', 'District of Columbia', 'Florida', 'Georgia',
+  'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 'Kansas', 'Kentucky',
+  'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 'Minnesota',
+  'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire',
+  'New Jersey', 'New Mexico', 'New York', 'North Carolina', 'North Dakota',
+  'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island',
+  'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont',
+  'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming',
+] as const;
+
+const US_STATE_ABBREVIATION_SET = new Set<string>(US_STATE_ABBREVIATIONS);
+const US_STATE_NAME_LOOKUP = Object.fromEntries(
+  US_STATE_NAMES.map((stateName) => [stateName.toLowerCase(), stateName]),
+);
+
+function escapeRegex(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const CITY_TOKEN_PATTERN = String.raw`[A-Za-z]+(?:[.'-][A-Za-z]+)*`;
+const CITY_PATTERN = `${CITY_TOKEN_PATTERN}(?:\\s+${CITY_TOKEN_PATTERN})*`;
+const STATE_PATTERN = [
+  ...[...US_STATE_NAMES]
+    .sort((a, b) => b.length - a.length)
+    .map((stateName) => escapeRegex(stateName).replace(/\s+/g, '\\s+')),
+  ...US_STATE_ABBREVIATIONS,
+].join('|');
+
+function normalizeLocation(cityRaw: string, stateRaw: string): string | undefined {
+  const city = cityRaw.replace(/\s+/g, ' ').trim();
+  const stateToken = stateRaw.replace(/\s+/g, ' ').trim();
+  const stateAbbreviation = stateToken.toUpperCase();
+  if (US_STATE_ABBREVIATION_SET.has(stateAbbreviation)) {
+    return `${city}, ${stateAbbreviation}`;
+  }
+
+  const canonicalStateName = US_STATE_NAME_LOOKUP[stateToken.toLowerCase()];
+  if (!canonicalStateName) return undefined;
+  return `${city}, ${canonicalStateName}`;
+}
+
+function parseLocation(text: string): string | undefined {
+  const explicitLocationPattern = new RegExp(
+    String.raw`\b(?:location|located\s+in)\s*[:\-]?\s*(${CITY_PATTERN})\s*,?\s*(${STATE_PATTERN})(?:\s+\d{5}(?:-\d{4})?)?(?=\b|$|[.!])`,
+    'i',
+  );
+  const explicitMatch = text.match(explicitLocationPattern);
+  if (explicitMatch) {
+    return normalizeLocation(explicitMatch[1], explicitMatch[2]);
+  }
+
+  const standaloneLocationPattern = new RegExp(
+    `^(${CITY_PATTERN})\\s*,\\s*(${STATE_PATTERN})(?:\\s+\\d{5}(?:-\\d{4})?)?[.,]?$`,
+    'i',
+  );
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine
+      .replace(/^[\s>*•-]+/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!line) continue;
+
+    const match = line.match(standaloneLocationPattern);
+    if (match) {
+      return normalizeLocation(match[1], match[2]);
+    }
+  }
+
+  return undefined;
+}
+
 // Regex-based extraction from pasted listing text.
 // This is the primary "smart" ingestion path in v1.
 export const rawTextAdapter: ListingAdapter = {
@@ -201,6 +283,15 @@ export const rawTextAdapter: ListingAdapter = {
     // Extract mileage (XXX,XXX mi/miles or shorthand like 120k mi)
     const mileage = parseMileage(text);
     if (mileage) fieldMeta['mileage'] = { origin: 'extracted', confidence: 'medium', note: 'Extracted from text pattern' };
+
+    const location = parseLocation(text);
+    if (location) {
+      fieldMeta['location'] = {
+        origin: 'extracted',
+        confidence: 'high',
+        note: 'Explicit city/state in listing text',
+      };
+    }
 
     // Extract make, model, trim — allowlist-driven so bad tokens never leak through
     let make: string | undefined;
@@ -288,6 +379,7 @@ export const rawTextAdapter: ListingAdapter = {
         rawDescription: text,
         rawPrice: price,
         rawMileage: mileage,
+        location,
         titleStatusRaw: titleHint,
       },
       canonical: {

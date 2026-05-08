@@ -44,4 +44,42 @@ describe('rawTextAdapter', () => {
     expect(result.listing.source).toBe('facebook');
     expect(result.listing.sourceUrl).toBe('https://m.facebook.com/marketplace/item/123?ref=bookmark');
   });
+
+  it('extracts an explicit standalone city and state line as location', async () => {
+    const result = await rawTextAdapter.parse(`
+      2018 Honda CR-V EX-L AWD
+      Provo, UT
+      $22,500
+      120k mi
+    `);
+
+    expect(result.listing.location).toBe('Provo, UT');
+    expect(result.fieldMeta.location).toMatchObject({
+      origin: 'extracted',
+      confidence: 'high',
+    });
+  });
+
+  it('extracts a prefixed location phrase without guessing', async () => {
+    const result = await rawTextAdapter.parse(`
+      2018 Honda CR-V EX-L AWD
+      Located in Salt Lake City, Utah.
+      $22,500
+      120k mi
+    `);
+
+    expect(result.listing.location).toBe('Salt Lake City, Utah');
+  });
+
+  it('does not infer location from ambiguous text', async () => {
+    const result = await rawTextAdapter.parse(`
+      2018 Honda CR-V EX-L AWD
+      Garage kept in excellent condition
+      $22,500
+      120k mi
+    `);
+
+    expect(result.listing.location).toBeUndefined();
+    expect(result.fieldMeta.location).toBeUndefined();
+  });
 });

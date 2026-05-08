@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X, ExternalLink, Pin, Archive, Copy, Trash2, Car, Pencil } from 'lucide-react';
 import { useUIStore } from '../../store/uiStore';
 import { useToastStore } from '../../store/toastStore';
 import { useVehicleById } from '../../hooks/useVehicles';
 import { useAssumptions } from '../../hooks/useAssumptions';
 import { useVehicleActions } from '../../hooks/useVehicleActions';
+import { db } from '../../db';
 import { computeEvaluation } from '../../engine';
 import { computeInsurance } from '../../engine/insurance';
 import { computeResale } from '../../engine/resale';
@@ -17,25 +18,46 @@ import { EditableField } from './EditableField';
 import { HistorySection } from './HistorySection';
 import { detectSourceFromUrl } from '../../adapters/detectSource';
 
+type ActiveDetailEditor = {
+  commitIfDirty: () => Promise<void> | void;
+};
+
 export function DetailDrawer() {
   const { selectedVehicleId, isDetailDrawerOpen, closeDetailDrawer } = useUIStore();
   const vehicle = useVehicleById(selectedVehicleId);
   const assumptions = useAssumptions();
-  const { updateVehicle, duplicateVehicle, removeVehicle, togglePin, toggleArchive, setCurrentCar } = useVehicleActions();
+  const { duplicateVehicle, removeVehicle, togglePin, toggleArchive, setCurrentCar } = useVehicleActions();
   const showToast = useToastStore((s) => s.showToast);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmArchiveCurrentCar, setConfirmArchiveCurrentCar] = useState(false);
+  const activeDetailEditorRef = useRef<ActiveDetailEditor | null>(null);
+
+  const registerActiveDetailEditor = (editor: ActiveDetailEditor | null) => {
+    activeDetailEditorRef.current = editor;
+  };
+
+  const requestCloseDrawer = async () => {
+    await Promise.resolve(activeDetailEditorRef.current?.commitIfDirty?.());
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement) {
+      activeElement.blur();
+    }
+    closeDetailDrawer();
+  };
 
   // Close on escape
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') closeDetailDrawer();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        void requestCloseDrawer();
+      }
     }
     if (isDetailDrawerOpen) {
       document.addEventListener('keydown', handleKey);
       return () => document.removeEventListener('keydown', handleKey);
     }
-  }, [isDetailDrawerOpen, closeDetailDrawer]);
+  }, [isDetailDrawerOpen, requestCloseDrawer]);
 
   if (!isDetailDrawerOpen || !vehicle) return null;
 
@@ -44,6 +66,13 @@ export function DetailDrawer() {
   const insurance = computeInsurance(vehicle, assumptions, resale.currentMarketValueEstimate);
   const profileInfo = DEPRECIATION_PROFILES[vehicle.user.depreciationProfileId ?? 'normal_midlife'];
   const isCurrentCar = vehicle.user.isCurrentCar;
+
+  const applyVehicleUpdate = async (changes: Record<string, unknown>) => {
+    await db.vehicles.update(vehicle.id, {
+      ...changes,
+      updatedAt: new Date().toISOString(),
+    } as never);
+  };
 
   const handleOverride = async (field: string, value: number) => {
     // Clamp to sane bounds per field to prevent runaway calculations
@@ -56,36 +85,38 @@ export function DetailDrawer() {
     };
     const b = bounds[field];
     const clamped = b ? Math.max(b.min, Math.min(b.max, value)) : value;
-    const newOverrides = { ...vehicle.user.overrides, [field]: clamped };
-    const newMeta = {
-      ...vehicle.fieldMeta,
-      [field]: { origin: 'overridden' as const, confidence: 'high' as const, originalValue: undefined, note: 'User override' },
-    };
-    await updateVehicle(vehicle.id, {
-      user: { ...vehicle.user, overrides: newOverrides },
-      fieldMeta: newMeta,
+    await applyVehicleUpdate({
+      [`user.overrides.${field}`]: clamped,
+      [`fieldMeta.${field}`]: {
+        origin: 'overridden' as const,
+        confidence: 'high' as const,
+        originalValue: undefined,
+        note: 'User override',
+      },
     });
   };
 
   const handleCatchUpChange = async (value: number) => {
-    await updateVehicle(vehicle.id, {
-      user: { ...vehicle.user, catchUpCost: value },
+    await applyVehicleUpdate({
+      'user.catchUpCost': value,
     });
   };
 
   const handleNotesChange = async (notes: string) => {
-    await updateVehicle(vehicle.id, {
-      user: { ...vehicle.user, notes },
+    await applyVehicleUpdate({
+      'user.notes': notes,
     });
   };
 
   const handleCanonicalChange = async (field: string, value: string | number | undefined) => {
-    const newCanonical = { ...vehicle.canonical, [field]: value || undefined };
-    const newMeta = {
-      ...vehicle.fieldMeta,
-      [field]: { origin: 'overridden' as const, confidence: 'high' as const, note: 'User override' },
-    };
-    await updateVehicle(vehicle.id, { canonical: newCanonical, fieldMeta: newMeta });
+    await applyVehicleUpdate({
+      [`canonical.${field}`]: value || undefined,
+      [`fieldMeta.${field}`]: {
+        origin: 'overridden' as const,
+        confidence: 'high' as const,
+        note: 'User override',
+      },
+    });
   };
 
   const handleUserChange = async (
@@ -93,23 +124,26 @@ export function DetailDrawer() {
     value: typeof vehicle.user[keyof typeof vehicle.user],
     opts?: { markOverride?: boolean }
   ) => {
-    const newUser = { ...vehicle.user, [field]: value };
+    const updates: Record<string, unknown> = {
+      [`user.${String(field)}`]: value,
+    };
     if (opts?.markOverride) {
-      const newMeta = {
-        ...vehicle.fieldMeta,
-        [field]: { origin: 'overridden' as const, confidence: 'high' as const, note: 'User override' },
+      updates[`fieldMeta.${String(field)}`] = {
+        origin: 'overridden' as const,
+        confidence: 'high' as const,
+        note: 'User override',
       };
-      await updateVehicle(vehicle.id, { user: newUser, fieldMeta: newMeta });
-    } else {
-      await updateVehicle(vehicle.id, { user: newUser });
     }
+    await applyVehicleUpdate(updates);
   };
 
   const handleListingChange = async (
     field: keyof typeof vehicle.listing,
     value: typeof vehicle.listing[keyof typeof vehicle.listing]
   ) => {
-    const newListing = { ...vehicle.listing, [field]: value };
+    const updates: Record<string, unknown> = {
+      [`listing.${String(field)}`]: value,
+    };
     // When the user adds or edits a sourceUrl and the URL maps to a
     // recognized site, also update `source` so the Source label in the
     // board reflects the website instead of staying on the original
@@ -119,17 +153,20 @@ export function DetailDrawer() {
     // source" consistent across entry paths.
     if (field === 'sourceUrl' && typeof value === 'string' && value.length > 0) {
       const detected = detectSourceFromUrl(value);
-      if (detected) newListing.source = detected;
+      if (detected) updates['listing.source'] = detected;
     }
-    await updateVehicle(vehicle.id, { listing: newListing });
+    await applyVehicleUpdate(updates);
   };
 
   return (
     <>
       {/* Backdrop */}
       <div
+        data-testid="detail-drawer-backdrop"
         className="fixed inset-0 bg-black/20 z-40"
-        onClick={closeDetailDrawer}
+        onClick={() => {
+          void requestCloseDrawer();
+        }}
       />
 
       {/* Drawer */}
@@ -216,7 +253,9 @@ export function DetailDrawer() {
               <Trash2 size={16} className="text-slate-400 hover:text-red-500" />
             </button>
             <button
-              onClick={closeDetailDrawer}
+              onClick={() => {
+                void requestCloseDrawer();
+              }}
               className="p-1.5 hover:bg-slate-100 rounded cursor-pointer"
               title="Close"
               aria-label="Close detail panel"
@@ -284,16 +323,16 @@ export function DetailDrawer() {
           {/* Canonical Vehicle */}
           <Section title="Vehicle Identity" collapsible>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-              <EditableFieldRow label="Year" value={String(vehicle.canonical.year)} meta={vehicle.fieldMeta['year']} inputType="number" onSave={(v) => handleCanonicalChange('year', Number(v))} />
-              <EditableFieldRow label="Make" value={vehicle.canonical.make} meta={vehicle.fieldMeta['make']} onSave={(v) => handleCanonicalChange('make', v)} />
-              <EditableFieldRow label="Model" value={vehicle.canonical.model} meta={vehicle.fieldMeta['model']} onSave={(v) => handleCanonicalChange('model', v)} />
-              <EditableFieldRow label="Trim" value={vehicle.canonical.trim ?? ''} meta={vehicle.fieldMeta['trim']} onSave={(v) => handleCanonicalChange('trim', v)} placeholder="—" />
-              <EditableFieldRow label="Body Style" value={vehicle.canonical.bodyStyle ?? ''} meta={vehicle.fieldMeta['bodyStyle']} options={['sedan', 'suv', 'truck', 'van', 'coupe', 'hatchback', 'wagon', 'crossover']} onSave={(v) => handleCanonicalChange('bodyStyle', v)} placeholder="—" />
-              <EditableFieldRow label="Drivetrain" value={vehicle.canonical.drivetrain ?? ''} meta={vehicle.fieldMeta['drivetrain']} options={['awd', '4wd', 'fwd', 'rwd']} displayTransform={(v) => v.toUpperCase()} onSave={(v) => handleCanonicalChange('drivetrain', v)} placeholder="—" />
-              <EditableFieldRow label="Engine" value={vehicle.canonical.engineType ?? ''} meta={vehicle.fieldMeta['engineType']} options={['gas', 'diesel', 'hybrid', 'phev', 'ev']} onSave={(v) => handleCanonicalChange('engineType', v)} placeholder="—" />
-              <EditableFieldRow label="Transmission" value={vehicle.canonical.transmissionType ?? ''} meta={vehicle.fieldMeta['transmissionType']} options={['automatic', 'manual', 'cvt']} onSave={(v) => handleCanonicalChange('transmissionType', v)} placeholder="—" />
-              <EditableFieldRow label="Vehicle Class" value={vehicle.canonical.vehicleClass ?? ''} meta={vehicle.fieldMeta['vehicleClass']} options={['compact_car', 'midsize_car', 'fullsize_car', 'compact_crossover', 'midsize_crossover', 'fullsize_suv', 'body_on_frame_suv', 'compact_truck', 'fullsize_truck', 'van']} displayTransform={(v) => v.replace(/_/g, ' ')} onSave={(v) => handleCanonicalChange('vehicleClass', v)} placeholder="—" />
-              <EditableFieldRow label="EPA Combined" value={vehicle.canonical.epaCombinedMpg != null ? String(vehicle.canonical.epaCombinedMpg) : ''} meta={vehicle.fieldMeta['epaCombinedMpg']} inputType="number" suffix=" mpg" onSave={(v) => handleCanonicalChange('epaCombinedMpg', v ? Number(v) : undefined)} placeholder="—" />
+              <EditableFieldRow label="Year" value={String(vehicle.canonical.year)} meta={vehicle.fieldMeta['year']} inputType="number" onSave={(v) => handleCanonicalChange('year', Number(v))} registerActiveEditor={registerActiveDetailEditor} />
+              <EditableFieldRow label="Make" value={vehicle.canonical.make} meta={vehicle.fieldMeta['make']} onSave={(v) => handleCanonicalChange('make', v)} registerActiveEditor={registerActiveDetailEditor} />
+              <EditableFieldRow label="Model" value={vehicle.canonical.model} meta={vehicle.fieldMeta['model']} onSave={(v) => handleCanonicalChange('model', v)} registerActiveEditor={registerActiveDetailEditor} />
+              <EditableFieldRow label="Trim" value={vehicle.canonical.trim ?? ''} meta={vehicle.fieldMeta['trim']} onSave={(v) => handleCanonicalChange('trim', v)} placeholder="—" registerActiveEditor={registerActiveDetailEditor} />
+              <EditableFieldRow label="Body Style" value={vehicle.canonical.bodyStyle ?? ''} meta={vehicle.fieldMeta['bodyStyle']} options={['sedan', 'suv', 'truck', 'van', 'coupe', 'hatchback', 'wagon', 'crossover']} onSave={(v) => handleCanonicalChange('bodyStyle', v)} placeholder="—" registerActiveEditor={registerActiveDetailEditor} />
+              <EditableFieldRow label="Drivetrain" value={vehicle.canonical.drivetrain ?? ''} meta={vehicle.fieldMeta['drivetrain']} options={['awd', '4wd', 'fwd', 'rwd']} displayTransform={(v) => v.toUpperCase()} onSave={(v) => handleCanonicalChange('drivetrain', v)} placeholder="—" registerActiveEditor={registerActiveDetailEditor} />
+              <EditableFieldRow label="Engine" value={vehicle.canonical.engineType ?? ''} meta={vehicle.fieldMeta['engineType']} options={['gas', 'diesel', 'hybrid', 'phev', 'ev']} onSave={(v) => handleCanonicalChange('engineType', v)} placeholder="—" registerActiveEditor={registerActiveDetailEditor} />
+              <EditableFieldRow label="Transmission" value={vehicle.canonical.transmissionType ?? ''} meta={vehicle.fieldMeta['transmissionType']} options={['automatic', 'manual', 'cvt']} onSave={(v) => handleCanonicalChange('transmissionType', v)} placeholder="—" registerActiveEditor={registerActiveDetailEditor} />
+              <EditableFieldRow label="Vehicle Class" value={vehicle.canonical.vehicleClass ?? ''} meta={vehicle.fieldMeta['vehicleClass']} options={['compact_car', 'midsize_car', 'fullsize_car', 'compact_crossover', 'midsize_crossover', 'fullsize_suv', 'body_on_frame_suv', 'compact_truck', 'fullsize_truck', 'van']} displayTransform={(v) => v.replace(/_/g, ' ')} onSave={(v) => handleCanonicalChange('vehicleClass', v)} placeholder="—" registerActiveEditor={registerActiveDetailEditor} />
+              <EditableFieldRow label="EPA Combined" value={vehicle.canonical.epaCombinedMpg != null ? String(vehicle.canonical.epaCombinedMpg) : ''} meta={vehicle.fieldMeta['epaCombinedMpg']} inputType="number" suffix=" mpg" onSave={(v) => handleCanonicalChange('epaCombinedMpg', v ? Number(v) : undefined)} placeholder="—" registerActiveEditor={registerActiveDetailEditor} />
             </div>
           </Section>
 
@@ -306,6 +345,7 @@ export function DetailDrawer() {
                 options={['clean', 'salvage', 'rebuilt', 'lemon', 'unknown']}
                 displayTransform={(v) => TITLE_STATUS_LABELS[v] ?? v}
                 onSave={(v) => handleUserChange('titleStatus', v as typeof vehicle.user.titleStatus)}
+                registerActiveEditor={registerActiveDetailEditor}
               />
               <EditableFieldRow
                 label="Condition"
@@ -313,6 +353,7 @@ export function DetailDrawer() {
                 options={['excellent', 'average', 'mild_mods', 'poor']}
                 displayTransform={(v) => CONDITION_LEVEL_LABELS[v] ?? v}
                 onSave={(v) => handleUserChange('conditionLevel', v as typeof vehicle.user.conditionLevel)}
+                registerActiveEditor={registerActiveDetailEditor}
               />
               <EditableFieldRow
                 label="Source"
@@ -320,12 +361,21 @@ export function DetailDrawer() {
                 options={['ksl', 'facebook', 'carscom', 'craigslist', 'dealer', 'manual', 'raw_text']}
                 displayTransform={(v) => LISTING_SOURCE_LABELS[v] ?? v}
                 onSave={(v) => handleListingChange('source', v as typeof vehicle.listing.source)}
+                registerActiveEditor={registerActiveDetailEditor}
+              />
+              <EditableFieldRow
+                label="Location"
+                value={vehicle.listing.location ?? ''}
+                onSave={(v) => handleListingChange('location', v ? v : undefined)}
+                placeholder="—"
+                registerActiveEditor={registerActiveDetailEditor}
               />
               <EditableFieldRow
                 label="Listing URL"
                 value={vehicle.listing.sourceUrl ?? ''}
                 onSave={(v) => handleListingChange('sourceUrl', v ? v : undefined)}
                 placeholder="—"
+                registerActiveEditor={registerActiveDetailEditor}
               />
             </div>
             <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
@@ -370,9 +420,9 @@ export function DetailDrawer() {
                 computedValue={computed.realisticMpg}
                 onSave={(v) => handleOverride('realisticMpg', v)}
                 onClear={() => {
-                  const newOverrides = { ...vehicle.user.overrides };
-                  delete newOverrides.realisticMpg;
-                  updateVehicle(vehicle.id, { user: { ...vehicle.user, overrides: newOverrides } });
+                  void applyVehicleUpdate({
+                    'user.overrides.realisticMpg': undefined,
+                  });
                 }}
               />
             </div>
@@ -500,9 +550,9 @@ export function DetailDrawer() {
                 computedValue={computed.currentMarketValueEstimate}
                 onSave={(v) => handleOverride('currentMarketValue', v)}
                 onClear={() => {
-                  const newOverrides = { ...vehicle.user.overrides };
-                  delete newOverrides.currentMarketValue;
-                  updateVehicle(vehicle.id, { user: { ...vehicle.user, overrides: newOverrides } });
+                  void applyVehicleUpdate({
+                    'user.overrides.currentMarketValue': undefined,
+                  });
                 }}
               />
               <div className="flex justify-between">
@@ -723,55 +773,110 @@ function EditableStatCard({
   );
 }
 
-function EditableFieldRow({ label, value, meta, onSave, options, inputType, displayTransform, placeholder, suffix }: {
+function EditableFieldRow({ label, value, meta, onSave, options, inputType, displayTransform, placeholder, suffix, registerActiveEditor }: {
   label: string;
   value: string;
   meta?: import('../../types').FieldMeta;
-  onSave: (value: string) => void;
+  onSave: (value: string) => void | Promise<void>;
   options?: string[];
   inputType?: 'text' | 'number';
   displayTransform?: (v: string) => string;
   placeholder?: string;
   suffix?: string;
+  registerActiveEditor?: (editor: ActiveDetailEditor | null) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
+  const isCommittingRef = useRef(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const displayed = value ? (displayTransform ? displayTransform(value) : value) : placeholder ?? '—';
+  const displayOption = (option: string) => option ? (displayTransform ? displayTransform(option) : option) : '—';
 
-  const commit = () => {
-    if (draft !== value) {
-      onSave(draft);
+  const commit = async (nextDraft = draft) => {
+    if (isCommittingRef.current) return;
+    isCommittingRef.current = true;
+    try {
+      if (nextDraft !== value) {
+        await onSave(nextDraft);
+      }
+    } finally {
+      isCommittingRef.current = false;
+      setEditing(false);
     }
-    setEditing(false);
+  };
+
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+
+  useEffect(() => {
+    if (!registerActiveEditor) return;
+    if (!editing || options) {
+      registerActiveEditor(null);
+      return;
+    }
+
+    registerActiveEditor({
+      commitIfDirty: () => {
+        const nextDraft = inputRef.current?.value ?? draft;
+        return commit(nextDraft);
+      },
+    });
+
+    return () => {
+      registerActiveEditor(null);
+    };
+  }, [commit, draft, editing, options, registerActiveEditor]);
+
+  const handleSelectChange = async (nextDraft: string) => {
+    setDraft(nextDraft);
+    if (nextDraft === value) {
+      setEditing(false);
+      return;
+    }
+    await commit(nextDraft);
   };
 
   if (editing) {
     return (
-      <div className="flex justify-between items-center py-0.5">
-        <span className="text-slate-500 text-xs">{label}</span>
+      <div className="flex justify-between items-start py-0.5">
+        <span className="text-slate-500 text-xs pt-1">{label}</span>
         {options ? (
           <select
             autoFocus
             className="text-xs px-1.5 py-0.5 border border-blue-300 rounded bg-white text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
             value={draft}
-            onChange={(e) => { setDraft(e.target.value); }}
-            onBlur={commit}
+            onChange={(e) => {
+              void handleSelectChange(e.currentTarget.value);
+            }}
+            onBlur={() => {
+              if (!isCommittingRef.current) {
+                setEditing(false);
+              }
+            }}
           >
             <option value="">—</option>
-            {options.map((o) => (
-              <option key={o} value={o}>{displayTransform ? displayTransform(o) : o}</option>
+            {options.map((option) => (
+              <option key={option} value={option}>
+                {displayOption(option)}
+              </option>
             ))}
           </select>
         ) : (
           <input
             autoFocus
+            ref={inputRef}
             type={inputType ?? 'text'}
             className="w-28 text-xs text-right px-1.5 py-0.5 border border-blue-300 rounded text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-500"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            onBlur={commit}
-            onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+            onBlur={() => { void commit(); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                void commit();
+              }
+            }}
           />
         )}
       </div>

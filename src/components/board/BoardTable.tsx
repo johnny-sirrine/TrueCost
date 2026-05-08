@@ -7,6 +7,7 @@ import {
   flexRender,
   type SortingState,
   type VisibilityState,
+  type ColumnSizingState,
 } from '@tanstack/react-table';
 import { ChevronUp, ChevronDown, ChevronsLeftRight, ChevronsRightLeft } from 'lucide-react';
 import { boardColumns, COLUMN_FAMILIES, CHILD_TO_PARENT, type BoardTableMeta } from './columns';
@@ -27,20 +28,7 @@ interface BoardTableProps {
 
 const SELL_ZERO_COLUMNS = new Set(['insurance', 'baseline', 'allIn', 'fuel', 'routine', 'repairs', 'reserve']);
 const SELL_PROCEEDS_COLUMNS = new Set(['firstYear', 'totalCost']);
-
-// Columns that remain fixed when the table scrolls horizontally.
-// Widths must match the `size` property in column definitions (see columns.tsx).
-// Offsets are cumulative widths.
-const STICKY_WIDTHS: Record<string, number> = {
-  pin: 36,
-  source: 80,
-  vehicle: 260,
-};
-const STICKY_LEFT: Record<string, number> = {
-  pin: 0,
-  source: 36,
-  vehicle: 116, // 36 (pin) + 80 (source)
-};
+const STICKY_COLUMN_IDS = ['pin', 'source', 'vehicle'] as const;
 
 function rowBgClass(isCurrentCar: boolean, isPinned: boolean): string {
   if (isCurrentCar) return 'bg-emerald-50';
@@ -63,6 +51,7 @@ function familyBandFor(columnId: string, columnVisibility: VisibilityState): str
 
 export function BoardTable({ data, columnVisibility, onColumnVisibilityChange, showSellScenario, onToggleSellScenario }: BoardTableProps) {
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const openDetailDrawer = useUIStore((s) => s.openDetailDrawer);
   const openSellScenarioDrawer = useUIStore((s) => s.openSellScenarioDrawer);
   const searchQuery = useUIStore((s) => s.searchQuery);
@@ -77,6 +66,29 @@ export function BoardTable({ data, columnVisibility, onColumnVisibilityChange, s
     if (!vehicle) return;
     await updateVehicle(vehicleId, {
       user: { ...vehicle.user, userRating: rating },
+    });
+  }, [data, updateVehicle]);
+
+  const onLocationChange = useCallback(async (vehicleId: string, location: string) => {
+    const vehicle = data.find((d) => d.vehicle.id === vehicleId)?.vehicle;
+    if (!vehicle || vehicle.user.isCurrentCar) return;
+    const normalizedLocation = location.trim();
+    await updateVehicle(vehicleId, {
+      listing: {
+        ...vehicle.listing,
+        location: normalizedLocation || undefined,
+      },
+    });
+  }, [data, updateVehicle]);
+
+  const onNotesChange = useCallback(async (vehicleId: string, notes: string) => {
+    const vehicle = data.find((d) => d.vehicle.id === vehicleId)?.vehicle;
+    if (!vehicle) return;
+    await updateVehicle(vehicleId, {
+      user: {
+        ...vehicle.user,
+        notes,
+      },
     });
   }, [data, updateVehicle]);
 
@@ -109,9 +121,11 @@ export function BoardTable({ data, columnVisibility, onColumnVisibilityChange, s
     openDetailDrawer,
     assumptions,
     onRatingChange,
+    onLocationChange,
+    onNotesChange,
     onDeleteVehicle,
     onTogglePin,
-  }), [openDetailDrawer, assumptions, onRatingChange, onDeleteVehicle, onTogglePin]);
+  }), [openDetailDrawer, assumptions, onRatingChange, onLocationChange, onNotesChange, onDeleteVehicle, onTogglePin]);
 
   /** Flip all children of a family's visibility at once. If any child is
    *  currently visible, the next state hides them all; otherwise show them
@@ -131,13 +145,19 @@ export function BoardTable({ data, columnVisibility, onColumnVisibilityChange, s
   const table = useReactTable({
     data,
     columns: boardColumns,
-    state: { sorting, columnVisibility, globalFilter },
+    state: { sorting, columnVisibility, globalFilter, columnSizing },
     meta,
     onSortingChange: setSorting,
+    onColumnSizingChange: setColumnSizing,
     onColumnVisibilityChange: (updater) => {
       const next = typeof updater === 'function' ? updater(columnVisibility) : updater;
       onColumnVisibilityChange(next);
     },
+    defaultColumn: {
+      minSize: 40,
+      enableResizing: false,
+    },
+    columnResizeMode: 'onChange',
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -150,13 +170,17 @@ export function BoardTable({ data, columnVisibility, onColumnVisibilityChange, s
   });
 
   const visibleLeafColumns = table.getVisibleLeafColumns();
-  const stickySectionColumns = visibleLeafColumns.filter((column) => STICKY_LEFT[column.id] !== undefined);
+  const stickyLeftById: Record<string, number> = {};
+  let stickySectionWidth = 0;
+  for (const stickyId of STICKY_COLUMN_IDS) {
+    const column = visibleLeafColumns.find((candidate) => candidate.id === stickyId);
+    if (!column) continue;
+    stickyLeftById[stickyId] = stickySectionWidth;
+    stickySectionWidth += column.getSize();
+  }
+  const stickySectionColumns = visibleLeafColumns.filter((column) => stickyLeftById[column.id] !== undefined);
   const stickySectionColSpan = stickySectionColumns.length;
   const trailingSectionColSpan = visibleLeafColumns.length - stickySectionColSpan;
-  const stickySectionWidth = stickySectionColumns.reduce(
-    (sum, column) => sum + (STICKY_WIDTHS[column.id] ?? column.getSize()),
-    0,
-  );
 
   return (
     <>
@@ -165,10 +189,9 @@ export function BoardTable({ data, columnVisibility, onColumnVisibilityChange, s
           {table.getHeaderGroups().map((hg) => (
             <tr key={hg.id} className="border-b border-slate-200 bg-white">
               {hg.headers.map((header) => {
-                const stickyLeft = STICKY_LEFT[header.id];
-                const stickyWidth = STICKY_WIDTHS[header.id];
+                const stickyLeft = stickyLeftById[header.id];
                 const isSticky = stickyLeft !== undefined;
-                const width = isSticky ? stickyWidth : header.getSize();
+                const width = header.getSize();
                 const familyChildren = COLUMN_FAMILIES[header.id];
                 const isFamilyParent = familyChildren !== undefined;
                 const childrenExpanded = isFamilyParent
@@ -187,7 +210,7 @@ export function BoardTable({ data, columnVisibility, onColumnVisibilityChange, s
                 return (
                   <th
                     key={header.id}
-                    className={`text-left py-2.5 px-2 text-xs font-medium text-slate-500 uppercase tracking-wider select-none whitespace-nowrap ${familyBandClass} ${stickyClass} shadow-[inset_0_-1px_0_rgb(226_232_240)]`}
+                    className={`relative text-left py-2.5 px-2 text-xs font-medium text-slate-500 uppercase tracking-wider select-none whitespace-nowrap ${familyBandClass} ${stickyClass} shadow-[inset_0_-1px_0_rgb(226_232_240)]`}
                     style={{ width, minWidth: width, ...(isSticky ? { left: stickyLeft } : {}) }}
                   >
                     {header.isPlaceholder ? null : (
@@ -230,6 +253,19 @@ export function BoardTable({ data, columnVisibility, onColumnVisibilityChange, s
                           </button>
                         )}
                       </div>
+                    )}
+                    {header.column.getCanResize() && (
+                      <div
+                        data-testid={`resize-${header.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        onDoubleClick={() => header.column.resetSize()}
+                        onMouseDown={header.getResizeHandler()}
+                        onTouchStart={header.getResizeHandler()}
+                        className={`absolute right-0 top-0 h-full w-3 translate-x-1/2 cursor-col-resize select-none touch-none ${
+                          header.column.getIsResizing() ? 'bg-blue-500/20' : 'hover:bg-slate-300/50'
+                        }`}
+                        aria-hidden="true"
+                      />
                     )}
                   </th>
                 );
@@ -332,8 +368,7 @@ export function BoardTable({ data, columnVisibility, onColumnVisibilityChange, s
                   `}
                 >
                   {row.getVisibleCells().map((cell) => {
-                    const stickyLeft = STICKY_LEFT[cell.column.id];
-                    const stickyWidth = STICKY_WIDTHS[cell.column.id];
+                    const stickyLeft = stickyLeftById[cell.column.id];
                     const isSticky = stickyLeft !== undefined;
                     const stickyBg = isSticky ? rowBgClass(isCurrentCar, isPinned) : '';
                     // Family columns (visible children + expanded parent) get
@@ -344,8 +379,8 @@ export function BoardTable({ data, columnVisibility, onColumnVisibilityChange, s
                     return (
                       <td
                         key={cell.id}
-                        className={`py-2.5 px-2 whitespace-nowrap ${isSticky ? `sticky z-[1] ${stickyBg}` : bandClass}`}
-                        style={isSticky ? { left: stickyLeft, width: stickyWidth, minWidth: stickyWidth } : undefined}
+                        className={`py-2.5 px-2 whitespace-nowrap ${cell.column.id === 'notes' ? 'align-top' : ''} ${isSticky ? `sticky z-[1] ${stickyBg}` : bandClass}`}
+                        style={isSticky ? { left: stickyLeft, width: cell.column.getSize(), minWidth: cell.column.getSize() } : { width: cell.column.getSize(), minWidth: cell.column.getSize() }}
                       >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
@@ -361,15 +396,14 @@ export function BoardTable({ data, columnVisibility, onColumnVisibilityChange, s
                       onClick={openSellScenarioDrawer}
                     >
                       {table.getVisibleLeafColumns().map((column) => {
-                        const stickyLeft = STICKY_LEFT[column.id];
-                        const stickyWidth = STICKY_WIDTHS[column.id];
+                        const stickyLeft = stickyLeftById[column.id];
                         const isSticky = stickyLeft !== undefined;
                         const bandClass = !isSticky ? familyBandFor(column.id, columnVisibility) : '';
                         return (
                           <td
                             key={`sell-${column.id}`}
                             className={`py-2 px-2 whitespace-nowrap text-sm ${isSticky ? 'sticky z-[1] bg-amber-50 group-hover/row:bg-amber-100' : bandClass}`}
-                            style={isSticky ? { left: stickyLeft, width: stickyWidth, minWidth: stickyWidth } : undefined}
+                            style={isSticky ? { left: stickyLeft, width: column.getSize(), minWidth: column.getSize() } : { width: column.getSize(), minWidth: column.getSize() }}
                           >
                             {column.id === 'vehicle' ? (
                               <span className="flex items-center gap-2 pl-4 text-xs">

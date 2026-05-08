@@ -33,7 +33,7 @@ export function vehiclesToCsv(computed: ComputedVehicle[]): string {
     'Deal Quality', 'Confidence',
     'Is Current Car', 'Pinned', 'Archived',
     'User Rating', 'Tags',
-    'Source', 'Source URL',
+    'Source', 'Location', 'Source URL',
     'Created At', 'Updated At',
   ];
 
@@ -70,6 +70,7 @@ export function vehiclesToCsv(computed: ComputedVehicle[]): string {
     vehicle.user.userRating ?? '',
     vehicle.user.tags.join('; '),
     vehicle.listing.source,
+    vehicle.listing.location ?? '',
     vehicle.listing.sourceUrl ?? '',
     vehicle.createdAt,
     vehicle.updatedAt,
