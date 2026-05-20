@@ -102,6 +102,12 @@ export function DetailDrawer() {
     });
   };
 
+  const handleFeesChange = async (value: number) => {
+    await applyVehicleUpdate({
+      'user.feesCost': value,
+    });
+  };
+
   const handleNotesChange = async (notes: string) => {
     await applyVehicleUpdate({
       'user.notes': notes,
@@ -512,10 +518,10 @@ export function DetailDrawer() {
               <div className="text-xs text-slate-400">Baseline + Insurance + Reserve</div>
             </div>
 
-            {/* Catch-up */}
+            {/* One-time upfront costs */}
             <div className="mt-3 pt-3 border-t border-slate-100">
               <div className="flex justify-between items-center text-sm">
-                <span className="text-slate-600">Catch-up cost / fees</span>
+                <span className="text-slate-600">Catch-up cost</span>
                 <input
                   type="number"
                   className="w-24 text-right px-2 py-1 border border-slate-200 rounded text-sm tabular-nums"
@@ -525,6 +531,19 @@ export function DetailDrawer() {
                   step={100}
                 />
               </div>
+              {!isCurrentCar && (
+                <div className="flex justify-between items-center text-sm mt-2">
+                  <span className="text-slate-600">Fees</span>
+                  <input
+                    type="number"
+                    className="w-24 text-right px-2 py-1 border border-slate-200 rounded text-sm tabular-nums"
+                    value={vehicle.user.feesCost ?? 0}
+                    onChange={(e) => handleFeesChange(Math.max(0, Number(e.target.value) || 0))}
+                    min={0}
+                    step={100}
+                  />
+                </div>
+              )}
             </div>
 
             {/* Aggregated */}

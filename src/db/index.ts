@@ -87,6 +87,19 @@ class CarBoardDB extends Dexie {
         }
       });
     });
+
+    // Version 8: explicit one-time purchase/transaction fees.
+    // Existing rows default to $0 so historical totals remain unchanged.
+    this.version(8).stores({
+      vehicles: 'id, createdAt, updatedAt',
+      assumptions: 'id',
+    }).upgrade(tx => {
+      return tx.table('vehicles').toCollection().modify(v => {
+        if (v.user && v.user.feesCost === undefined) {
+          v.user.feesCost = 0;
+        }
+      });
+    });
   }
 }
 

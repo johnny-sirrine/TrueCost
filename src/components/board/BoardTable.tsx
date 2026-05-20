@@ -26,9 +26,9 @@ interface BoardTableProps {
   onToggleSellScenario?: () => void;
 }
 
-const SELL_ZERO_COLUMNS = new Set(['insurance', 'baseline', 'allIn', 'fuel', 'routine', 'repairs', 'reserve']);
+const SELL_ZERO_COLUMNS = new Set(['insurance', 'baseline', 'allIn', 'fuel', 'routine', 'repairs', 'registration', 'parking', 'reserve', 'salesTax', 'catchUp', 'fees', 'upFront']);
 const SELL_PROCEEDS_COLUMNS = new Set(['firstYear', 'totalCost']);
-const STICKY_COLUMN_IDS = ['pin', 'source', 'location', 'vehicle'] as const;
+const STICKY_COLUMN_IDS = ['pin', 'source', 'location', 'rating', 'vehicle'] as const;
 
 function rowBgClass(isCurrentCar: boolean, isPinned: boolean): string {
   if (isCurrentCar) return 'bg-emerald-50';
@@ -92,6 +92,24 @@ export function BoardTable({ data, columnVisibility, onColumnVisibilityChange, s
     });
   }, [data, updateVehicle]);
 
+  const onFeesChange = useCallback(async (vehicleId: string, feesCost: number) => {
+    const vehicle = data.find((d) => d.vehicle.id === vehicleId)?.vehicle;
+    if (!vehicle || vehicle.user.isCurrentCar) return;
+    await updateVehicle(vehicleId, {
+      user: {
+        ...vehicle.user,
+        feesCost,
+      },
+      fieldMeta: {
+        ...vehicle.fieldMeta,
+        feesCost: {
+          origin: 'overridden',
+          confidence: 'high',
+        },
+      },
+    });
+  }, [data, updateVehicle]);
+
   /** Delete a vehicle and offer an undo toast. We snapshot the full row
    *  before deletion so the undo handler can re-add it with the same id
    *  (preserving references from other data — sell scenario, pinned state,
@@ -123,9 +141,10 @@ export function BoardTable({ data, columnVisibility, onColumnVisibilityChange, s
     onRatingChange,
     onLocationChange,
     onNotesChange,
+    onFeesChange,
     onDeleteVehicle,
     onTogglePin,
-  }), [openDetailDrawer, assumptions, onRatingChange, onLocationChange, onNotesChange, onDeleteVehicle, onTogglePin]);
+  }), [openDetailDrawer, assumptions, onRatingChange, onLocationChange, onNotesChange, onFeesChange, onDeleteVehicle, onTogglePin]);
 
   /** Flip all children of a family's visibility at once. If any child is
    *  currently visible, the next state hides them all; otherwise show them
@@ -275,13 +294,16 @@ export function BoardTable({ data, columnVisibility, onColumnVisibilityChange, s
         </thead>
         <tbody>
           {(() => {
-            // Partition sorted rows so current-car rows always float to the top,
-            // independent of the active column sort. TanStack's sort still
-            // orders within each partition.
+            // Partition sorted rows so current-car and pinned candidate groups
+            // stay stable independent of active column sort. TanStack's sort
+            // still orders within each partition.
             const allRows = table.getRowModel().rows;
+            const currentRows = allRows.filter((r) => r.original.vehicle.user.isCurrentCar);
+            const candidateRows = allRows.filter((r) => !r.original.vehicle.user.isCurrentCar);
             const orderedRows = [
-              ...allRows.filter((r) => r.original.vehicle.user.isCurrentCar),
-              ...allRows.filter((r) => !r.original.vehicle.user.isCurrentCar),
+              ...currentRows,
+              ...candidateRows.filter((r) => r.original.vehicle.user.pinned),
+              ...candidateRows.filter((r) => !r.original.vehicle.user.pinned),
             ];
             return orderedRows.map((row, index) => {
             const isCurrentCar = row.original.vehicle.user.isCurrentCar;

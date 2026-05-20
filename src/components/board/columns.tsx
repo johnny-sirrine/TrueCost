@@ -1,5 +1,5 @@
 import { createColumnHelper } from '@tanstack/react-table';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Star, Pin, Trash2 } from 'lucide-react';
 import type { ComputedVehicle } from '../../hooks/useComputedBoard';
 import type { GlobalAssumptions } from '../../types';
@@ -16,6 +16,7 @@ export interface BoardTableMeta {
   onRatingChange: (vehicleId: string, rating: number | undefined) => void;
   onLocationChange: (vehicleId: string, location: string) => Promise<void> | void;
   onNotesChange: (vehicleId: string, notes: string) => Promise<void> | void;
+  onFeesChange: (vehicleId: string, feesCost: number) => Promise<void> | void;
   onDeleteVehicle: (vehicleId: string) => void;
   onTogglePin: (vehicleId: string, currentPinned: boolean) => void;
 }
@@ -78,8 +79,8 @@ function RatingStars({
  *  left-to-right order in the table so re-ordering the `boardColumns`
  *  array stays in sync with this map. */
 export const COLUMN_FAMILIES: Record<string, string[]> = {
-  allIn: ['insurance', 'baseline'],
-  firstYear: ['salesTax'],
+  upFront: ['salesTax', 'catchUp', 'fees'],
+  allIn: ['fuel', 'routine', 'repairs', 'registration', 'parking', 'baseline', 'insurance', 'reserve'],
   totalCost: ['resaleLoss'],
 };
 
@@ -100,7 +101,8 @@ const H: Record<string, string> = {
   location: 'Listing location from the source when available. Blank means it was not provided.',
   notes: 'Your notes for this vehicle. Wraps in the table, shows up to 4 lines, and can be edited inline.',
   rating: 'Your personal rating. Click a star to rate, click again to clear.',
-  price: 'Seller\'s asking price before tax.',
+  price: 'Seller\'s asking price before tax, fees, and catch-up costs.',
+  upFront: 'One-time upfront cost: seller asking price + sales tax + catch-up work + fees.',
   salesTax: 'Sales tax on purchase price, based on your configured rate.',
   mileage: 'Current odometer reading.',
   drivetrain: 'Drive configuration (AWD, 4WD, FWD, RWD).',
@@ -108,16 +110,19 @@ const H: Record<string, string> = {
   insurance: 'Estimated monthly insurance cost. Rough estimate based on coverage type, vehicle value, and driver demographics.',
   baseline: 'Monthly operating cost: fuel + routine maintenance + expected repairs + registration + parking/tolls.',
   allIn: 'Baseline + insurance + a prudent monthly reserve for major repairs.',
-  firstYear: 'Total first-year outlay: purchase + tax + 12 months all-in operating + catch-up.',
-  resaleLoss: 'Projected change in value: purchase cost (incl. tax) minus estimated future resale.',
+  firstYear: 'Total first-year outlay: purchase + tax + fees + 12 months operating cost + catch-up.',
+  resaleLoss: 'Projected change in value: purchase cost (incl. tax and fees) minus estimated future resale.',
   totalCost: 'Total ownership cost: operating expenses plus net resale loss (or minus gain).',
   capability: 'Off-road / rough-road capability score (0–10).',
   deal: 'Deal quality based on price vs. market value, mileage, title, and retention.',
   fuel: 'Monthly fuel cost: annual miles ÷ MPG × gas price ÷ 12.',
   routine: 'Monthly routine maintenance: oil, tires, brakes, filters.',
   repairs: 'Monthly expected repair costs based on vehicle age and condition.',
+  registration: 'Monthly registration and government fees from your assumptions.',
+  parking: 'Monthly parking and toll costs from your assumptions.',
   reserve: 'Monthly set-aside for major repairs, spread over ownership horizon.',
-  catchUp: 'One-time costs: deferred maintenance, dealer fees not in sticker price, etc.',
+  catchUp: 'One-time deferred maintenance or catch-up work. Not a deposit or down payment.',
+  fees: 'One-time purchase or transaction fees not included in listing price or sales tax.',
   resale: 'Estimated private-party resale value at end of ownership horizon.',
   confidence: 'Data confidence based on field provenance (extracted, inferred, assumed).',
 };
@@ -133,6 +138,81 @@ function Hdr({ label, tip }: { label: string; tip?: string }) {
  *  the number. */
 function PerMo() {
   return <span className="text-[10px] text-slate-400 ml-0.5">/mo</span>;
+}
+
+function InlineCurrencyCell({
+  value,
+  placeholder,
+  disabled = false,
+  onSave,
+}: {
+  value: number;
+  placeholder: string;
+  disabled?: boolean;
+  onSave: (value: number) => Promise<void> | void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(value || 0));
+
+  useEffect(() => {
+    setDraft(String(value || 0));
+  }, [value]);
+
+  const normalizedDraft = () => Math.max(0, Math.round(Number(draft) || 0));
+
+  const commit = async () => {
+    const nextValue = normalizedDraft();
+    if (nextValue !== value) {
+      await onSave(nextValue);
+    }
+    setEditing(false);
+  };
+
+  if (disabled) {
+    return <span className="text-slate-400">—</span>;
+  }
+
+  if (editing) {
+    return (
+      <input
+        type="number"
+        value={draft}
+        min={0}
+        step={100}
+        autoFocus
+        aria-label={placeholder}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => void commit()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            void commit();
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            setDraft(String(value || 0));
+            setEditing(false);
+          }
+        }}
+        className="block w-full min-w-0 rounded border border-blue-300 px-2 py-1 text-right text-xs leading-5 tabular-nums text-slate-700 shadow-sm outline-none ring-1 ring-blue-500"
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="block w-full rounded border border-transparent px-2 py-1 text-left text-xs leading-5 tabular-nums text-slate-500 hover:border-slate-200 hover:bg-white"
+      title={value > 0 ? fc(value) : undefined}
+      onClick={(e) => {
+        e.stopPropagation();
+        setDraft(String(value || 0));
+        setEditing(true);
+      }}
+    >
+      {value > 0 ? fc(value) : <span className="text-slate-400 italic">{placeholder}</span>}
+    </button>
+  );
 }
 
 export const boardColumns = [
@@ -211,6 +291,22 @@ export const boardColumns = [
     },
   }),
 
+  col.accessor((r) => r.vehicle.user.userRating ?? 0, {
+    id: 'rating',
+    header: () => <Hdr label="My Rating" tip={H.rating} />,
+    size: 100,
+    cell: ({ row, table }) => {
+      const meta = table.options.meta as BoardTableMeta;
+      const rating = row.original.vehicle.user.userRating;
+      return (
+        <RatingStars
+          rating={rating}
+          onChange={(next) => meta.onRatingChange(row.original.vehicle.id, next)}
+        />
+      );
+    },
+  }),
+
   col.accessor(
     (r) => `${r.vehicle.canonical.year} ${r.vehicle.canonical.make} ${r.vehicle.canonical.model}`,
     {
@@ -247,18 +343,21 @@ export const boardColumns = [
     },
   ),
 
-  col.accessor((r) => r.vehicle.user.userRating ?? 0, {
-    id: 'rating',
-    header: () => <Hdr label="My Rating" tip={H.rating} />,
+  col.accessor((r) => r.vehicle.user.mileage, {
+    id: 'mileage',
+    header: () => <Hdr label="Miles" tip={H.mileage} />,
     size: 100,
-    cell: ({ row, table }) => {
-      const meta = table.options.meta as BoardTableMeta;
-      const rating = row.original.vehicle.user.userRating;
+    cell: ({ row }) => {
+      const v = row.original.vehicle;
+      const age = new Date().getFullYear() - v.canonical.year;
+      const expected = Math.min(age * 12000, 180000);
+      const diff = v.user.mileage - expected;
+      const label = diff > 10000 ? 'high' : diff < -10000 ? 'low' : 'average';
+      const tip = `${formatMiles(v.user.mileage)} on a ${age}-year-old vehicle. Expected ~${formatMiles(expected)} for age (${label}).`;
       return (
-        <RatingStars
-          rating={rating}
-          onChange={(next) => meta.onRatingChange(row.original.vehicle.id, next)}
-        />
+        <CellTooltip content={tip}>
+          <span className="tabular-nums text-slate-600">{formatMiles(v.user.mileage)}</span>
+        </CellTooltip>
       );
     },
   }),
@@ -275,10 +374,90 @@ export const boardColumns = [
       const meta = table.options.meta as BoardTableMeta;
       const price = v.user.listingPrice;
       const rate = meta.assumptions.salesTaxRate;
-      const tip = `Listing price. With ${(rate * 100).toFixed(1)}% sales tax: ${fc(price * (1 + rate))} effective purchase cost.`;
+      const fees = v.user.feesCost ?? 0;
+      const tip = `Listing price. With ${(rate * 100).toFixed(1)}% sales tax${fees > 0 ? ` and ${fc(fees)} fees` : ''}: ${fc(price * (1 + rate) + fees)} effective purchase cost.`;
       return (
         <CellTooltip content={tip}>
           <span className="font-medium tabular-nums">{fc(price)}</span>
+        </CellTooltip>
+      );
+    },
+  }),
+
+  col.accessor((r) => r.vehicle.user.listingPrice, {
+    id: 'salesTax',
+    header: () => <Hdr label="Tax" tip={H.salesTax} />,
+    size: 75,
+    cell: ({ row, table }) => {
+      const v = row.original.vehicle;
+      if (v.user.isCurrentCar) {
+        return <span className="text-slate-400">—</span>;
+      }
+      const meta = table.options.meta as BoardTableMeta;
+      const price = v.user.listingPrice;
+      const rate = meta.assumptions.salesTaxRate;
+      const tax = Math.round(price * rate);
+      const tip = `${(rate * 100).toFixed(1)}% sales tax on ${fc(price)}. Included in 1st year cost and resale loss calculation.`;
+      return (
+        <CellTooltip content={tip}>
+          <span className="tabular-nums text-slate-500">{fc(tax)}</span>
+        </CellTooltip>
+      );
+    },
+  }),
+
+  col.accessor((r) => r.vehicle.user.catchUpCost, {
+    id: 'catchUp',
+    header: () => <Hdr label="Catch-Up" tip={H.catchUp} />,
+    size: 85,
+    cell: ({ getValue }) => {
+      const v = getValue();
+      return (
+        <span className="tabular-nums text-slate-500">
+          {v > 0 ? fc(v) : '—'}
+        </span>
+      );
+    },
+  }),
+
+  col.accessor((r) => r.vehicle.user.feesCost ?? 0, {
+    id: 'fees',
+    header: () => <Hdr label="Fees" tip={H.fees} />,
+    size: 75,
+    cell: ({ row, getValue, table }) => {
+      const meta = table.options.meta as BoardTableMeta;
+      return (
+        <InlineCurrencyCell
+          value={getValue()}
+          placeholder="Add fees"
+          disabled={row.original.vehicle.user.isCurrentCar}
+          onSave={(nextValue) => meta.onFeesChange(row.original.vehicle.id, nextValue)}
+        />
+      );
+    },
+  }),
+
+  col.display({
+    id: 'upFront',
+    header: () => <Hdr label="Up Front Cost" tip={H.upFront} />,
+    size: 115,
+    cell: ({ row, table }) => {
+      const v = row.original.vehicle;
+      const meta = table.options.meta as BoardTableMeta;
+      const price = v.user.isCurrentCar ? 0 : v.user.listingPrice;
+      const tax = v.user.isCurrentCar ? 0 : Math.round(v.user.listingPrice * meta.assumptions.salesTaxRate);
+      const catchUp = v.user.catchUpCost;
+      const fees = v.user.isCurrentCar ? 0 : (v.user.feesCost ?? 0);
+      const total = price + tax + catchUp + fees;
+      const parts: string[] = [];
+      if (price > 0) parts.push(`Price ${fc(price)}`);
+      if (tax > 0) parts.push(`Tax ${fc(tax)}`);
+      if (catchUp > 0) parts.push(`Catch-up ${fc(catchUp)}`);
+      if (fees > 0) parts.push(`Fees ${fc(fees)}`);
+      const tip = parts.length > 0 ? `${parts.join(' + ')} = ${fc(total)}.` : 'No upfront purchase, tax, catch-up, or fee costs entered.';
+      return (
+        <CellTooltip content={tip}>
+          <span className="tabular-nums font-medium text-slate-700">{total > 0 ? fc(total) : '—'}</span>
         </CellTooltip>
       );
     },
@@ -302,25 +481,6 @@ export const boardColumns = [
           maxDisplayLines={4}
           onSave={(nextValue) => meta.onNotesChange(row.original.vehicle.id, nextValue)}
         />
-      );
-    },
-  }),
-
-  col.accessor((r) => r.vehicle.user.mileage, {
-    id: 'mileage',
-    header: () => <Hdr label="Miles" tip={H.mileage} />,
-    size: 100,
-    cell: ({ row }) => {
-      const v = row.original.vehicle;
-      const age = new Date().getFullYear() - v.canonical.year;
-      const expected = Math.min(age * 12000, 180000);
-      const diff = v.user.mileage - expected;
-      const label = diff > 10000 ? 'high' : diff < -10000 ? 'low' : 'average';
-      const tip = `${formatMiles(v.user.mileage)} on a ${age}-year-old vehicle. Expected ~${formatMiles(expected)} for age (${label}).`;
-      return (
-        <CellTooltip content={tip}>
-          <span className="tabular-nums text-slate-600">{formatMiles(v.user.mileage)}</span>
-        </CellTooltip>
       );
     },
   }),
@@ -352,24 +512,80 @@ export const boardColumns = [
     },
   }),
 
-  col.accessor((r) => r.computed.insuranceMonthly, {
-    id: 'insurance',
-    header: () => <Hdr label="Ins./mo" tip={H.insurance} />,
+  col.accessor((r) => r.computed.fuelMonthly, {
+    id: 'fuel',
+    header: () => <Hdr label="Fuel/mo" tip={H.fuel} />,
     size: 85,
-    cell: ({ row }) => {
+    cell: ({ row, table }) => {
       const c = row.original.computed;
-      const v = row.original.vehicle;
-      const isOverride = v.user.overrides.insuranceMonthly !== undefined;
-      const tip = isOverride
-        ? `User override: ${fc(c.insuranceMonthly)}/mo.`
-        : `Rough estimate: ${fc(c.insuranceMonthly)}/mo. Based on coverage type, vehicle value, and driver demographics.`;
+      const meta = table.options.meta as BoardTableMeta;
+      const miles = row.original.vehicle.user.overrides.annualMiles ?? meta.assumptions.annualMiles;
+      const tip = `${(miles / 1000).toFixed(0)}k mi/yr ÷ ${c.realisticMpg.toFixed(1)} mpg × $${meta.assumptions.gasPrice.toFixed(2)}/gal ÷ 12`;
       return (
         <CellTooltip content={tip}>
-          <span className="tabular-nums text-slate-600">
-            {fc(c.insuranceMonthly)}
-            {isOverride && <span className="text-[10px] text-violet-500 ml-0.5">*</span>}
-            <PerMo />
-          </span>
+          <span className="tabular-nums text-slate-600">{fc(c.fuelMonthly)}<PerMo /></span>
+        </CellTooltip>
+      );
+    },
+  }),
+
+  col.accessor((r) => r.computed.routineMonthly, {
+    id: 'routine',
+    header: () => <Hdr label="Routine/mo" tip={H.routine} />,
+    size: 95,
+    cell: ({ row }) => {
+      const c = row.original.computed;
+      const tip = `Routine maintenance (oil, tires, brakes, filters) for a ${row.original.vehicle.canonical.vehicleClass?.replace(/_/g, ' ') ?? 'vehicle'} at ${formatMiles(row.original.vehicle.user.mileage)}.`;
+      return (
+        <CellTooltip content={tip}>
+          <span className="tabular-nums text-slate-600">{fc(c.routineMonthly)}<PerMo /></span>
+        </CellTooltip>
+      );
+    },
+  }),
+
+  col.accessor((r) => r.computed.expectedRepairsMonthly, {
+    id: 'repairs',
+    header: () => <Hdr label="Repairs/mo" tip={H.repairs} />,
+    size: 95,
+    cell: ({ row }) => {
+      const c = row.original.computed;
+      const age = new Date().getFullYear() - row.original.vehicle.canonical.year;
+      const tip = `Expected repair costs for a ${age}-year-old vehicle in ${row.original.vehicle.user.conditionLevel} condition.`;
+      return (
+        <CellTooltip content={tip}>
+          <span className="tabular-nums text-slate-600">{fc(c.expectedRepairsMonthly)}<PerMo /></span>
+        </CellTooltip>
+      );
+    },
+  }),
+
+  col.accessor((r) => r.computed.registrationMonthly, {
+    id: 'registration',
+    header: () => <Hdr label="Reg./mo" tip={H.registration} />,
+    size: 85,
+    cell: ({ row, table }) => {
+      const c = row.original.computed;
+      const meta = table.options.meta as BoardTableMeta;
+      const tip = `${fc(meta.assumptions.annualRegistrationFees)} annual registration/fees ÷ 12 = ${fc(c.registrationMonthly)}/mo.`;
+      return (
+        <CellTooltip content={tip}>
+          <span className="tabular-nums text-slate-600">{fc(c.registrationMonthly)}<PerMo /></span>
+        </CellTooltip>
+      );
+    },
+  }),
+
+  col.accessor((r) => r.computed.parkingAndTollsMonthly, {
+    id: 'parking',
+    header: () => <Hdr label="Parking/mo" tip={H.parking} />,
+    size: 95,
+    cell: ({ row }) => {
+      const c = row.original.computed;
+      const tip = `Parking and tolls from assumptions: ${fc(c.parkingAndTollsMonthly)}/mo.`;
+      return (
+        <CellTooltip content={tip}>
+          <span className="tabular-nums text-slate-600">{fc(c.parkingAndTollsMonthly)}<PerMo /></span>
         </CellTooltip>
       );
     },
@@ -393,6 +609,45 @@ export const boardColumns = [
     },
   }),
 
+  col.accessor((r) => r.computed.insuranceMonthly, {
+    id: 'insurance',
+    header: () => <Hdr label="Ins./mo" tip={H.insurance} />,
+    size: 85,
+    cell: ({ row }) => {
+      const c = row.original.computed;
+      const v = row.original.vehicle;
+      const isOverride = v.user.overrides.insuranceMonthly !== undefined;
+      const tip = isOverride
+        ? `User override: ${fc(c.insuranceMonthly)}/mo.`
+        : `Rough estimate: ${fc(c.insuranceMonthly)}/mo. Based on coverage type, vehicle value, and driver demographics.`;
+      return (
+        <CellTooltip content={tip}>
+          <span className="tabular-nums text-slate-600">
+            {fc(c.insuranceMonthly)}
+            {isOverride && <span className="text-[10px] text-violet-500 ml-0.5">*</span>}
+            <PerMo />
+          </span>
+        </CellTooltip>
+      );
+    },
+  }),
+
+  col.accessor((r) => r.computed.majorRepairReserveMonthly, {
+    id: 'reserve',
+    header: () => <Hdr label="Reserve/mo" tip={H.reserve} />,
+    size: 95,
+    cell: ({ row, table }) => {
+      const c = row.original.computed;
+      const meta = table.options.meta as BoardTableMeta;
+      const tip = `Monthly set-aside for major repairs (engine, transmission, suspension). Spread over ${meta.assumptions.ownershipYears}-year ownership horizon.`;
+      return (
+        <CellTooltip content={tip}>
+          <span className="tabular-nums text-slate-500 italic">{fc(c.majorRepairReserveMonthly)}<PerMo /></span>
+        </CellTooltip>
+      );
+    },
+  }),
+
   col.accessor((r) => r.computed.allInMonthly, {
     id: 'allIn',
     header: () => <Hdr label="All-In/mo" tip={H.allIn} />,
@@ -408,28 +663,6 @@ export const boardColumns = [
     },
   }),
 
-  col.accessor((r) => r.vehicle.user.listingPrice, {
-    id: 'salesTax',
-    header: () => <Hdr label="Tax" tip={H.salesTax} />,
-    size: 75,
-    cell: ({ row, table }) => {
-      const v = row.original.vehicle;
-      if (v.user.isCurrentCar) {
-        return <span className="text-slate-400">—</span>;
-      }
-      const meta = table.options.meta as BoardTableMeta;
-      const price = v.user.listingPrice;
-      const rate = meta.assumptions.salesTaxRate;
-      const tax = Math.round(price * rate);
-      const tip = `${(rate * 100).toFixed(1)}% sales tax on ${fc(price)}. Included in 1st year cost and resale loss calculation.`;
-      return (
-        <CellTooltip content={tip}>
-          <span className="tabular-nums text-slate-500">{fc(tax)}</span>
-        </CellTooltip>
-      );
-    },
-  }),
-
   col.accessor((r) => r.computed.firstYearCost, {
     id: 'firstYear',
     header: () => <Hdr label="1st Year Cost" tip={H.firstYear} />,
@@ -439,18 +672,26 @@ export const boardColumns = [
       const v = row.original.vehicle;
       const meta = table.options.meta as BoardTableMeta;
       const isCurrentCar = v.user.isCurrentCar;
+      const monthlyBasis = meta.assumptions.includeMajorRepairReserveInFirstYear
+        ? c.baselineMonthly + c.insuranceMonthly + c.majorRepairReserveMonthly
+        : c.baselineMonthly + c.insuranceMonthly;
+      const monthlyLabel = meta.assumptions.includeMajorRepairReserveInFirstYear
+        ? '12mo all-in'
+        : '12mo operating';
       let tip: string;
       if (isCurrentCar) {
-        const ops = (c.baselineMonthly + c.insuranceMonthly) * 12;
+        const ops = monthlyBasis * 12;
         const catchUp = v.user.catchUpCost;
-        tip = `12mo operating ${fc(ops)}`;
+        tip = `${monthlyLabel} ${fc(ops)}`;
         if (catchUp > 0) tip += ` + Catch-up ${fc(catchUp)}`;
         tip += ` = ${fc(c.firstYearCost)}. No purchase cost (current car).`;
       } else {
         const tax = Math.round(v.user.listingPrice * meta.assumptions.salesTaxRate);
-        const ops = (c.baselineMonthly + c.insuranceMonthly) * 12;
+        const fees = v.user.feesCost ?? 0;
+        const ops = monthlyBasis * 12;
         const catchUp = v.user.catchUpCost;
-        tip = `Purchase ${fc(v.user.listingPrice)} + Tax ${fc(tax)} + 12mo operating ${fc(ops)}`;
+        tip = `Purchase ${fc(v.user.listingPrice)} + Tax ${fc(tax)} + ${monthlyLabel} ${fc(ops)}`;
+        if (fees > 0) tip += ` + Fees ${fc(fees)}`;
         if (catchUp > 0) tip += ` + Catch-up ${fc(catchUp)}`;
         tip += ` = ${fc(c.firstYearCost)}`;
       }
@@ -475,9 +716,9 @@ export const boardColumns = [
       if (isCurrentCar) {
         tip = `Current value ${fc(c.currentMarketValueEstimate)} → Future ${fc(c.futureResaleValueEstimate)}. Depreciation: ${fc(c.resaleLoss)}.`;
       } else {
-        const effective = v.user.listingPrice * (1 + meta.assumptions.salesTaxRate);
+        const effective = v.user.listingPrice * (1 + meta.assumptions.salesTaxRate) + (v.user.feesCost ?? 0);
         const label = c.resaleLoss > 0 ? 'Loss' : 'Gain';
-        tip = `Paid ${fc(effective)} (incl. tax). Est. future value ${fc(c.futureResaleValueEstimate)}. ${label}: ${fc(Math.abs(c.resaleLoss))}.`;
+        tip = `Paid ${fc(effective)} (incl. tax/fees). Est. future value ${fc(c.futureResaleValueEstimate)}. ${label}: ${fc(Math.abs(c.resaleLoss))}.`;
       }
       return (
         <CellTooltip content={tip}>
@@ -549,85 +790,6 @@ export const boardColumns = [
             {quality}
           </span>
         </CellTooltip>
-      );
-    },
-  }),
-
-  // Detail cost columns (hidden by default, available in column picker)
-  col.accessor((r) => r.computed.fuelMonthly, {
-    id: 'fuel',
-    header: () => <Hdr label="Fuel/mo" tip={H.fuel} />,
-    size: 85,
-    cell: ({ row, table }) => {
-      const c = row.original.computed;
-      const meta = table.options.meta as BoardTableMeta;
-      const miles = row.original.vehicle.user.overrides.annualMiles ?? meta.assumptions.annualMiles;
-      const tip = `${(miles / 1000).toFixed(0)}k mi/yr ÷ ${c.realisticMpg.toFixed(1)} mpg × $${meta.assumptions.gasPrice.toFixed(2)}/gal ÷ 12`;
-      return (
-        <CellTooltip content={tip}>
-          <span className="tabular-nums text-slate-600">{fc(c.fuelMonthly)}<PerMo /></span>
-        </CellTooltip>
-      );
-    },
-  }),
-
-  col.accessor((r) => r.computed.routineMonthly, {
-    id: 'routine',
-    header: () => <Hdr label="Routine/mo" tip={H.routine} />,
-    size: 95,
-    cell: ({ row }) => {
-      const c = row.original.computed;
-      const tip = `Routine maintenance (oil, tires, brakes, filters) for a ${row.original.vehicle.canonical.vehicleClass?.replace(/_/g, ' ') ?? 'vehicle'} at ${formatMiles(row.original.vehicle.user.mileage)}.`;
-      return (
-        <CellTooltip content={tip}>
-          <span className="tabular-nums text-slate-600">{fc(c.routineMonthly)}<PerMo /></span>
-        </CellTooltip>
-      );
-    },
-  }),
-
-  col.accessor((r) => r.computed.expectedRepairsMonthly, {
-    id: 'repairs',
-    header: () => <Hdr label="Repairs/mo" tip={H.repairs} />,
-    size: 95,
-    cell: ({ row }) => {
-      const c = row.original.computed;
-      const age = new Date().getFullYear() - row.original.vehicle.canonical.year;
-      const tip = `Expected repair costs for a ${age}-year-old vehicle in ${row.original.vehicle.user.conditionLevel} condition.`;
-      return (
-        <CellTooltip content={tip}>
-          <span className="tabular-nums text-slate-600">{fc(c.expectedRepairsMonthly)}<PerMo /></span>
-        </CellTooltip>
-      );
-    },
-  }),
-
-  col.accessor((r) => r.computed.majorRepairReserveMonthly, {
-    id: 'reserve',
-    header: () => <Hdr label="Reserve/mo" tip={H.reserve} />,
-    size: 95,
-    cell: ({ row, table }) => {
-      const c = row.original.computed;
-      const meta = table.options.meta as BoardTableMeta;
-      const tip = `Monthly set-aside for major repairs (engine, transmission, suspension). Spread over ${meta.assumptions.ownershipYears}-year ownership horizon.`;
-      return (
-        <CellTooltip content={tip}>
-          <span className="tabular-nums text-slate-500 italic">{fc(c.majorRepairReserveMonthly)}<PerMo /></span>
-        </CellTooltip>
-      );
-    },
-  }),
-
-  col.accessor((r) => r.vehicle.user.catchUpCost, {
-    id: 'catchUp',
-    header: () => <Hdr label="Catch-Up / Fees" tip={H.catchUp} />,
-    size: 85,
-    cell: ({ getValue }) => {
-      const v = getValue();
-      return (
-        <span className="tabular-nums text-slate-500">
-          {v > 0 ? fc(v) : '—'}
-        </span>
       );
     },
   }),

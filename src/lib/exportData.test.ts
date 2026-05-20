@@ -31,6 +31,7 @@ describe('vehiclesToCsv', () => {
           conditionLevel: 'average',
           modificationLevel: 'stock',
           catchUpCost: 0,
+          feesCost: 0,
           notes: '',
           tags: [],
           pinned: false,
@@ -61,6 +62,7 @@ describe('vehiclesToCsv', () => {
     const csv = vehiclesToCsv(computed);
     expect(csv.split('\n')[0]).toContain('Location');
     expect(csv.split('\n')[0]).toContain('Modification Level');
+    expect(csv.split('\n')[0]).toContain('Fees');
     expect(csv).toContain('stock');
     expect(csv).toContain('"Provo, UT"');
   });

@@ -57,6 +57,7 @@ function makeVehicle(): VehicleRow {
       conditionLevel: 'average',
       modificationLevel: 'stock',
       catchUpCost: 0,
+      feesCost: 0,
       notes: '',
       tags: [],
       pinned: false,

@@ -48,12 +48,12 @@ export function computeResale(
 
   // Resale gain/loss depends on whether this is the current car.
   // Current car: depreciation = current value - future value (value lost by keeping it)
-  // Candidate: purchase cost (incl. tax) - future value
+  // Candidate: purchase cost (incl. tax and fees) - future value
   let resaleLoss: number;
   if (vehicle.user.isCurrentCar) {
     resaleLoss = currentMarketValueEstimate - futureResaleValueEstimate;
   } else {
-    const effectivePurchaseCost = listingPrice * (1 + assumptions.salesTaxRate);
+    const effectivePurchaseCost = listingPrice * (1 + assumptions.salesTaxRate) + (vehicle.user.feesCost ?? 0);
     resaleLoss = effectivePurchaseCost - futureResaleValueEstimate;
   }
 

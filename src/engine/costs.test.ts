@@ -23,6 +23,7 @@ function makeVehicle(overrides: Partial<VehicleRow> = {}): VehicleRow {
       conditionLevel: 'average',
       modificationLevel: 'stock',
       catchUpCost: 0,
+      feesCost: 0,
       notes: '',
       tags: [],
       pinned: false,
@@ -75,6 +76,19 @@ describe('computeCosts maintenance estimates', () => {
     expect(costs.costFactors.routine).toEqual([{ label: 'User override', multiplier: 1 }]);
     expect(costs.costFactors.expectedRepairs).toEqual([{ label: 'User override', multiplier: 1 }]);
     expect(costs.costFactors.majorRepairReserve).toEqual([{ label: 'User override', multiplier: 1 }]);
+  });
+
+  it('includes one-time fees in candidate first-year cost', () => {
+    const assumptions = createDefaultAssumptions();
+    const withoutFees = computeCosts(makeVehicle(), assumptions, 22, 100);
+    const withFees = computeCosts(
+      makeVehicle({ user: { ...makeVehicle().user, feesCost: 650 } }),
+      assumptions,
+      22,
+      100,
+    );
+
+    expect(withFees.firstYearCost - withoutFees.firstYearCost).toBe(650);
   });
 
   it('does not apply make or model reliability multipliers', () => {

@@ -146,7 +146,7 @@ describe('depreciation profiles', () => {
 // --- Resale gain/loss with sales tax ---
 
 describe('resale gain/loss with sales tax', () => {
-  const makeVehicle = (overrides: Partial<{ listingPrice: number; mileage: number; titleStatus: 'clean' | 'rebuilt'; depreciationProfileId: string; isCurrentCar: boolean }>): VehicleRow => ({
+  const makeVehicle = (overrides: Partial<{ listingPrice: number; feesCost: number; mileage: number; titleStatus: 'clean' | 'rebuilt'; depreciationProfileId: string; isCurrentCar: boolean }>): VehicleRow => ({
     id: 'test',
     createdAt: '',
     updatedAt: '',
@@ -159,6 +159,7 @@ describe('resale gain/loss with sales tax', () => {
       conditionLevel: 'average',
       modificationLevel: 'stock',
       catchUpCost: 0,
+      feesCost: overrides.feesCost ?? 0,
       notes: '',
       tags: [],
       pinned: false,
@@ -203,6 +204,13 @@ describe('resale gain/loss with sales tax', () => {
     // Same future resale, but higher effective cost with tax → worse resale loss
     expect(withTax.resaleLoss).toBeGreaterThan(noTax.resaleLoss);
     expect(noTax.futureResaleValueEstimate).toBe(withTax.futureResaleValueEstimate);
+  });
+
+  it('fees increase candidate resale loss', () => {
+    const noFees = computeResale(makeVehicle({ feesCost: 0 }), assumptions);
+    const withFees = computeResale(makeVehicle({ feesCost: 650 }), assumptions);
+
+    expect(withFees.resaleLoss - noFees.resaleLoss).toBe(650);
   });
 
   it('overpaying shows actual loss', () => {

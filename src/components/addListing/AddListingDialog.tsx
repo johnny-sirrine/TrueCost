@@ -18,6 +18,10 @@ import { DerivedInfoPreview } from './DerivedInfoPreview';
 import type { VehicleRow, TitleStatus, Drivetrain, TransmissionType, ConditionLevel, ModificationLevel, ParseResult, FieldMeta } from '../../types';
 
 type Tab = 'url' | 'text' | 'manual';
+type FeesCostOrigin = 'dealerDefault' | 'user' | null;
+
+const DEALER_FEE_ESTIMATE = 500;
+const DEALER_FEE_HELPER = 'Estimated dealer documentation/processing fee: $500. Dealer fees vary and are not state-mandated; edit this if the listing shows a different amount.';
 
 export function AddListingDialog() {
   const { isAddDialogOpen, closeAddDialog } = useUIStore();
@@ -36,6 +40,9 @@ export function AddListingDialog() {
   const [model, setModel] = useState('');
   const [trim, setTrim] = useState('');
   const [price, setPrice] = useState(0);
+  const [feesCost, setFeesCost] = useState(0);
+  const [isDealerListing, setIsDealerListing] = useState(false);
+  const [feesCostOrigin, setFeesCostOrigin] = useState<FeesCostOrigin>(null);
   const [mileage, setMileage] = useState(0);
   const [drivetrain, setDrivetrain] = useState<Drivetrain>('awd');
   const [titleStatus, setTitleStatus] = useState<TitleStatus>('clean');
@@ -61,6 +68,24 @@ export function AddListingDialog() {
     ? getPastedTextSourceUrlWarningLines(sourceUrl)
     : [];
 
+  const handleFeesCostChange = (nextValue: number) => {
+    const normalized = Math.max(0, Math.round(nextValue) || 0);
+    setFeesCost(normalized);
+    setFeesCostOrigin(normalized > 0 ? 'user' : null);
+  };
+
+  const handleDealerListingChange = (checked: boolean) => {
+    setIsDealerListing(checked);
+    if (checked && feesCost <= 0) {
+      setFeesCost(DEALER_FEE_ESTIMATE);
+      setFeesCostOrigin('dealerDefault');
+    }
+    if (!checked && feesCostOrigin === 'dealerDefault') {
+      setFeesCost(0);
+      setFeesCostOrigin(null);
+    }
+  };
+
   const resetForm = () => {
     setTab('text');
     setPasteInput('');
@@ -72,6 +97,9 @@ export function AddListingDialog() {
     setModel('');
     setTrim('');
     setPrice(0);
+    setFeesCost(0);
+    setIsDealerListing(false);
+    setFeesCostOrigin(null);
     setMileage(0);
     setDrivetrain('awd');
     setTitleStatus('clean');
@@ -118,6 +146,9 @@ export function AddListingDialog() {
     setModel('');
     setTrim('');
     setPrice(0);
+    setFeesCost(0);
+    setIsDealerListing(false);
+    setFeesCostOrigin(null);
     setMileage(0);
     setDrivetrain('awd');
     setTitleStatus('clean');
@@ -134,6 +165,14 @@ export function AddListingDialog() {
   const handleParse = async () => {
     const trimmedInput = pasteInput.trim();
     const existingSourceUrl = sourceUrl.trim();
+    const existingIsDealerListing = isDealerListing;
+    const existingFeesCost = feesCost;
+    const existingFeesCostOrigin = feesCostOrigin;
+    const restoreFeeState = () => {
+      setIsDealerListing(existingIsDealerListing);
+      setFeesCost(existingFeesCost);
+      setFeesCostOrigin(existingFeesCostOrigin);
+    };
     const adapter = resolveAdapter(trimmedInput);
     if (!adapter) {
       if (tab === 'url') {
@@ -153,6 +192,7 @@ export function AddListingDialog() {
         ];
 
         resetReviewForm();
+        restoreFeeState();
         setShowTextSourceUrlWarning(false);
         setParseResult({
           listing: {
@@ -173,6 +213,7 @@ export function AddListingDialog() {
     }
     const result = await adapter.parse(pasteInput);
     resetReviewForm();
+    restoreFeeState();
     setParseResult(result);
     setParseWarnings(result.warnings);
 
@@ -298,6 +339,18 @@ export function AddListingDialog() {
         };
       }
     }
+    if (feesCost > 0) {
+      fieldMeta.feesCost = isDealerListing && feesCostOrigin === 'dealerDefault' && feesCost === DEALER_FEE_ESTIMATE
+        ? {
+            origin: 'assumed',
+            confidence: 'low',
+            note: 'Flat dealer documentation/processing fee estimate',
+          }
+        : {
+            origin: 'overridden',
+            confidence: 'high',
+          };
+    }
 
     // Source resolution, priority order:
     //   1. If the user typed a recognized Source URL, classify that URL.
@@ -321,7 +374,7 @@ export function AddListingDialog() {
         rawDescription: parseResult?.listing.rawDescription,
         rawPrice: price,
         rawMileage: mileage,
-        sellerType: 'unknown',
+        sellerType: isDealerListing ? 'dealer' : 'unknown',
         location: location.trim() || parseResult?.listing.location || undefined,
         titleStatusRaw: titleStatus,
         vin: vinValidation?.valid ? vinValidation.normalized : undefined,
@@ -346,6 +399,7 @@ export function AddListingDialog() {
         conditionLevel: condition,
         modificationLevel,
         catchUpCost: 0,
+        feesCost,
         notes: '',
         tags: [],
         pinned: false,
@@ -441,17 +495,25 @@ export function AddListingDialog() {
                 onChange={(e) => setPasteInput(e.target.value)}
               />
               {tab === 'text' && (
-                <FormField label="Source URL (optional)">
-                  <OptionalSourceUrlField
-                    value={sourceUrl}
-                    onChange={(value) => {
-                      setSourceUrl(value);
-                      setShowTextSourceUrlWarning(false);
-                    }}
-                    onBlur={() => setShowTextSourceUrlWarning(true)}
-                    warningLines={textSourceUrlWarnings}
+                <>
+                  <FormField label="Source URL (optional)">
+                    <OptionalSourceUrlField
+                      value={sourceUrl}
+                      onChange={(value) => {
+                        setSourceUrl(value);
+                        setShowTextSourceUrlWarning(false);
+                      }}
+                      onBlur={() => setShowTextSourceUrlWarning(true)}
+                      warningLines={textSourceUrlWarnings}
+                    />
+                  </FormField>
+                  <DealerFeeControls
+                    isDealerListing={isDealerListing}
+                    feesCost={feesCost}
+                    onDealerChange={handleDealerListingChange}
+                    onFeesChange={handleFeesCostChange}
                   />
-                </FormField>
+                </>
               )}
               <button
                 onClick={handleParse}
@@ -581,6 +643,13 @@ export function AddListingDialog() {
                   />
                 </FormField>
               </div>
+
+              <DealerFeeControls
+                isDealerListing={isDealerListing}
+                feesCost={feesCost}
+                onDealerChange={handleDealerListingChange}
+                onFeesChange={handleFeesCostChange}
+              />
 
               <div className="grid grid-cols-5 gap-3">
                 <FormField label="Drivetrain">
@@ -724,6 +793,48 @@ function OptionalSourceUrlField({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function DealerFeeControls({
+  isDealerListing,
+  feesCost,
+  onDealerChange,
+  onFeesChange,
+}: {
+  isDealerListing: boolean;
+  feesCost: number;
+  onDealerChange: (checked: boolean) => void;
+  onFeesChange: (value: number) => void;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 space-y-2">
+      <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+        <input
+          type="checkbox"
+          checked={isDealerListing}
+          onChange={(e) => onDealerChange(e.target.checked)}
+          className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+        />
+        Sold by dealership
+      </label>
+      {isDealerListing && (
+        <p className="text-xs text-amber-700">
+          {DEALER_FEE_HELPER}
+        </p>
+      )}
+      <label className="block text-xs font-medium text-slate-600">
+        Fees ($)
+        <input
+          type="number"
+          value={feesCost}
+          onChange={(e) => onFeesChange(Number(e.target.value))}
+          className="form-input mt-1"
+          min={0}
+          step={100}
+        />
+      </label>
     </div>
   );
 }

@@ -82,9 +82,10 @@ export function computeCosts(
   // First-year cost
   const monthlyBasis1yr = assumptions.includeMajorRepairReserveInFirstYear
     ? withInsurance + majorRepairReserveMonthly : withInsurance;
+  const purchaseFees = isCurrentCar ? 0 : (vehicle.user.feesCost ?? 0);
   const firstYearCost = isCurrentCar
     ? monthlyBasis1yr * 12 + vehicle.user.catchUpCost
-    : vehicle.user.listingPrice * (1 + assumptions.salesTaxRate) + monthlyBasis1yr * 12 + vehicle.user.catchUpCost;
+    : vehicle.user.listingPrice * (1 + assumptions.salesTaxRate) + purchaseFees + monthlyBasis1yr * 12 + vehicle.user.catchUpCost;
 
   // Total cost at horizon (resaleLoss added by orchestrator)
   const horizonMonthlyBasis = assumptions.includeMajorRepairReserveInTotalCost

@@ -97,6 +97,7 @@ export function AddCurrentCarDialog() {
         conditionLevel: condition,
         modificationLevel,
         catchUpCost: 0,
+        feesCost: 0,
         notes: '',
         tags: [],
         pinned: false,

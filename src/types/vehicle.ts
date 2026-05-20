@@ -102,6 +102,7 @@ export interface VehicleUserData {
   conditionLevel: ConditionLevel;
   modificationLevel: ModificationLevel;
   catchUpCost: number;
+  feesCost: number;
   notes: string;
   tags: string[];
   pinned: boolean;

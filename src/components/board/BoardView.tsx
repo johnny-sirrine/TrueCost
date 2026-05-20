@@ -7,24 +7,27 @@ import { useUIStore } from '../../store/uiStore';
 import type { VisibilityState } from '@tanstack/react-table';
 
 // Default visibility:
-//   - Summary columns (All-In/mo, 1st Year Cost, 5-Year Cost) are shown;
-//     their component children (Ins./mo, Baseline/mo, Tax, Resale Loss)
-//     are hidden and revealed via the per-family chevron in the header.
-//   - The historical power-user columns below the main set (fuel breakdown,
-//     resale estimate, confidence) stay hidden — accessed via the Columns
+//   - Summary columns are shown; family children are hidden and revealed
+//     via the per-family chevron in the header.
+//   - Power-user extras below the main set (resale estimate, confidence)
+//     stay hidden — accessed via the Columns
 //     dropdown only.
 const DEFAULT_VISIBILITY: VisibilityState = {
+  rating: false,
   // Family children — collapsed by default
-  insurance: false,
-  baseline: false,
-  salesTax: false,
-  resaleLoss: false,
-  // Power-user extras
   fuel: false,
   routine: false,
   repairs: false,
+  registration: false,
+  parking: false,
+  baseline: false,
+  insurance: false,
   reserve: false,
   catchUp: false,
+  fees: false,
+  salesTax: false,
+  resaleLoss: false,
+  // Power-user extras
   resale: false,
   confidence: false,
 };
@@ -39,13 +42,6 @@ export function BoardView() {
   const currentCars = computedBoard.filter((r) => r.vehicle.user.isCurrentCar && !r.vehicle.user.archived);
   const candidates = computedBoard.filter((r) => !r.vehicle.user.isCurrentCar && !r.vehicle.user.archived);
   const archivedRows = computedBoard.filter((r) => r.vehicle.user.archived);
-
-  // Pinned first within candidates
-  const sortedCandidates = [...candidates].sort((a, b) => {
-    if (a.vehicle.user.pinned && !b.vehicle.user.pinned) return -1;
-    if (!a.vehicle.user.pinned && b.vehicle.user.pinned) return 1;
-    return 0;
-  });
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -67,7 +63,7 @@ export function BoardView() {
 
         {/* Single table: current car rows first, then candidates — columns align */}
         <BoardTable
-          data={[...currentCars, ...sortedCandidates]}
+          data={[...currentCars, ...candidates]}
           columnVisibility={columnVisibility}
           onColumnVisibilityChange={setColumnVisibility}
           showSellScenario={showSellScenario}

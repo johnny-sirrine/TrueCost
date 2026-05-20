@@ -77,6 +77,7 @@ const vehicleUserDataSchema = z.object({
   conditionLevel: z.enum(['excellent', 'average', 'mild_mods', 'poor']),
   modificationLevel: z.enum(['stock', 'low', 'medium', 'high']).default('stock'),
   catchUpCost: z.number().min(0),
+  feesCost: z.number().min(0).default(0),
   notes: z.string(),
   tags: z.array(z.string()),
   pinned: z.boolean(),

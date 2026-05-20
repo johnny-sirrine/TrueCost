@@ -11,11 +11,13 @@ import { COLUMN_FAMILIES, CHILD_TO_PARENT } from './columns';
 const COLUMN_LABELS: Record<string, string> = {
   pin: 'Pin',
   source: 'Source',
-  vehicle: 'Vehicle',
   location: 'Location',
   rating: 'My Rating',
-  price: 'Price',
+  vehicle: 'Vehicle',
   mileage: 'Miles',
+  price: 'Price',
+  upFront: 'Up Front Cost',
+  notes: 'Notes',
   drivetrain: 'Drive',
   mpg: 'MPG',
   insurance: 'Insurance/mo',
@@ -27,12 +29,14 @@ const COLUMN_LABELS: Record<string, string> = {
   totalCost: 'Total Cost',
   capability: 'Capability',
   deal: 'Deal Rating',
-  notes: 'Notes',
   fuel: 'Fuel/mo',
   routine: 'Routine/mo',
   repairs: 'Repairs/mo',
+  registration: 'Registration/mo',
+  parking: 'Parking & Tolls/mo',
   reserve: 'Reserve/mo',
-  catchUp: 'Catch-Up / Fees',
+  catchUp: 'Catch-Up',
+  fees: 'Fees',
   resale: 'Resale Est.',
   confidence: 'Confidence',
 };
@@ -41,8 +45,8 @@ const COLUMN_LABELS: Record<string, string> = {
  *  Children are suppressed from the top-level list and rendered under
  *  the parent instead. Columns not present in any family and not a
  *  parent themselves fall into the "More columns" tail section. */
-const FAMILY_PARENT_ORDER = ['allIn', 'firstYear', 'totalCost'];
-const MORE_COLUMNS = ['fuel', 'routine', 'repairs', 'reserve', 'catchUp', 'resale', 'confidence'];
+const FAMILY_PARENT_ORDER = ['upFront', 'allIn', 'totalCost'];
+const MORE_COLUMNS = ['resale', 'confidence'];
 const TOP_LEVEL_COLUMNS = Object.keys(COLUMN_LABELS).filter(
   (id) => CHILD_TO_PARENT[id] === undefined && !MORE_COLUMNS.includes(id),
 );
